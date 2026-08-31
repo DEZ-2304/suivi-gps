@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suivi GPS Temps Réel</title>
+    <link rel="stylesheet" href="https://unpkg.com" />
+    <style>
+        #map { height: 100vh; width: 100%; }
+        body { margin: 0; padding: 0; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com"></script>
+    <script src="https://gstatic.com"></script>
+    <script src="https://gstatic.com"></script>
+
+    <script>
+        // CONFIGURATION FIREBASE CONNECTÉE À VOTRE BASE
+        const firebaseConfig = {
+            databaseURL: "https://suivi-gps-68794-default-rtdb.firebaseio.com/"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // Initialisation de la carte Leaflet centrée par défaut (Paris)
+        const map = L.map('map').setView([48.8566, 2.3522], 13); 
+
+        // Injection gratuite du visuel Google Maps
+        L.tileLayer('https://{s}://{x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+            attribution: '© Google Maps'
+        }).addTo(map);
+
+        // Ajout du curseur rouge sur la carte
+        let marker = L.marker([48.8566, 2.3522]).addTo(map);
+
+        // Lecture en temps réel de la base de données
+        database.ref('gps_location').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data && data.latitude && data.longitude) {
+                const lat = parseFloat(data.latitude);
+                const lng = parseFloat(data.longitude);
+
+                const newPos = new L.LatLng(lat, lng);
+                marker.setLatLng(newPos); // Déplace le curseur
+                map.setView(newPos, 16);  // Centre la carte sur la nouvelle position
+            }
+        });
+    </script>
+</body>
+</html>
