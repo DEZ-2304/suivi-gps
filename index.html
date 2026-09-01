@@ -1,57 +1,144 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Suivi GPS Temps Réel</title>
-    <link rel="stylesheet" href="https://unpkg.com" />
-    <style>
-        #map { height: 100vh; width: 100%; }
-        body { margin: 0; padding: 0; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suivi GPS Temps Réel - Canne Intelligente</title>
+
+<!-- 1) CSS Leaflet : URL COMPLETE (c'etait le bug principal) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<style>
+  html, body { margin:0; padding:0; height:100%; font-family: Arial, Helvetica, sans-serif; }
+  #map { height:100%; width:100%; background:#e8e8e8; }
+  #panneau {
+    position:absolute; top:10px; right:10px; z-index:1000;
+    background:#fff; padding:12px 14px; border-radius:8px;
+    box-shadow:0 2px 10px rgba(0,0,0,.35); font-size:13px; width:270px;
+  }
+  #panneau h3 { margin:0 0 8px; font-size:14px; }
+  #etat { font-weight:bold; }
+  .ok{color:#0a8a0a} .ko{color:#c00} .wait{color:#c07800}
+  button { margin-top:8px; width:100%; padding:7px 10px; cursor:pointer; border:1px solid #888;
+           border-radius:5px; background:#f4f4f4; font-size:13px; }
+  button:hover { background:#e6e6e6; }
+  .ligne { margin:3px 0; }
+</style>
 </head>
 <body>
 
-    <div id="map"></div>
+<div id="map"></div>
 
-    <script src="https://unpkg.com"></script>
-    <script src="https://gstatic.com"></script>
-    <script src="https://gstatic.com"></script>
+<div id="panneau">
+  <h3>🦯 Canne intelligente — Suivi GPS</h3>
+  <div class="ligne">État : <span id="etat" class="wait">Initialisation…</span></div>
+  <div class="ligne" id="coords">Position : —</div>
+  <div class="ligne" id="maj">Dernière MAJ : —</div>
+  <button id="btnDemo" onclick="demoSimulation()">▶ Tester sans matériel (simulation)</button>
+  <button onclick="basculerFond()">🗺️ Google / OpenStreetMap</button>
+</div>
 
-    <script>
-        // CONFIGURATION FIREBASE CONNECTÉE À VOTRE BASE
-        const firebaseConfig = {
-            databaseURL: "https://suivi-gps-68794-default-rtdb.firebaseio.com/"
-        };
-        
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
+<!-- 2) Librairies JS : URLs COMPLETES -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-        // Initialisation de la carte Leaflet centrée par défaut (Paris)
-        const map = L.map('map').setView([48.8566, 2.3522], 13); 
+<script>
+/* ================= 1. CARTE ================= */
+const POS_DEFAUT = [-18.8792, 47.5079];   // Antananarivo (mets tes coordonnées si tu veux)
 
-        // Injection gratuite du visuel Google Maps
-        L.tileLayer('https://{s}://{x}&y={y}&z={z}', {
-            maxZoom: 20,
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-            attribution: '© Google Maps'
-        }).addTo(map);
+const map = L.map('map').setView(POS_DEFAUT, 13);
 
-        // Ajout du curseur rouge sur la carte
-        let marker = L.marker([48.8566, 2.3522]).addTo(map);
+// Fond Google Maps (URL corrigée)
+const fondGoogle = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+  maxZoom: 20, subdomains: ['mt0','mt1','mt2','mt3'], attribution: '© Google Maps'
+});
+// Fond de secours OpenStreetMap (toujours fiable)
+const fondOSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '© OpenStreetMap'
+});
 
-        // Lecture en temps réel de la base de données
-        database.ref('gps_location').on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (data && data.latitude && data.longitude) {
-                const lat = parseFloat(data.latitude);
-                const lng = parseFloat(data.longitude);
+let fondActuel = fondGoogle.addTo(map);
+function basculerFond(){
+  map.removeLayer(fondActuel);
+  fondActuel = (fondActuel === fondGoogle) ? fondOSM : fondGoogle;
+  fondActuel.addTo(map);
+}
 
-                const newPos = new L.LatLng(lat, lng);
-                marker.setLatLng(newPos); // Déplace le curseur
-                map.setView(newPos, 16);  // Centre la carte sur la nouvelle position
-            }
-        });
-    </script>
+const marker = L.marker(POS_DEFAUT).addTo(map).bindPopup('Position de la canne');
+const cercle = L.circle(POS_DEFAUT, {radius:25, color:'#d00', fillColor:'#f33', fillOpacity:.25}).addTo(map);
+const trace  = L.polyline([], {color:'#d00', weight:3, opacity:.6}).addTo(map);
+
+const elEtat   = document.getElementById('etat');
+const elCoords = document.getElementById('coords');
+const elMaj    = document.getElementById('maj');
+
+function setEtat(txt, cls){ elEtat.textContent = txt; elEtat.className = cls; }
+
+function afficherPosition(lat, lng, source){
+  if (isNaN(lat) || isNaN(lng)) return;
+  const p = L.latLng(lat, lng);
+  marker.setLatLng(p);
+  cercle.setLatLng(p);
+  trace.addLatLng(p);
+  map.setView(p, Math.max(map.getZoom(), 17));
+  elCoords.textContent = `Position : ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  elMaj.textContent    = `Dernière MAJ : ${new Date().toLocaleTimeString()} (${source})`;
+  setEtat('Position reçue ✔', 'ok');
+}
+
+/* ================= 2. FIREBASE ================= */
+const firebaseConfig = {
+  databaseURL: "https://suivi-gps-68794-default-rtdb.firebaseio.com"
+};
+
+try {
+  firebase.initializeApp(firebaseConfig);
+  const database = firebase.database();
+
+  // Voyant de connexion
+  database.ref('.info/connected').on('value', s => {
+    if (s.val() === true) setEtat('Connecté à Firebase — en attente de données…', 'wait');
+    else                  setEtat('Déconnecté de Firebase', 'ko');
+  });
+
+  // Lecture temps réel
+  database.ref('gps_location').on('value', (snapshot) => {
+    const data = snapshot.val();
+    console.log('[Firebase] gps_location =', data);
+    if (data && data.latitude != null && data.longitude != null) {
+      afficherPosition(parseFloat(data.latitude), parseFloat(data.longitude), 'Firebase');
+    } else {
+      setEtat('Connecté, mais /gps_location est vide (la canne n\'envoie rien)', 'ko');
+    }
+  }, (err) => {
+    console.error(err);
+    setEtat('Erreur Firebase : ' + err.message, 'ko');
+  });
+
+} catch (e) {
+  console.error(e);
+  setEtat('Firebase non initialisé : ' + e.message, 'ko');
+}
+
+/* ========= 3. MODE DÉMO (sans AIR780E ni NEO-6M) ========= */
+let demoTimer = null;
+function demoSimulation(){
+  const btn = document.getElementById('btnDemo');
+  if (demoTimer){
+    clearInterval(demoTimer); demoTimer = null;
+    btn.textContent = '▶ Tester sans matériel (simulation)';
+    return;
+  }
+  btn.textContent = '⏹ Arrêter la simulation';
+  let lat = POS_DEFAUT[0], lng = POS_DEFAUT[1];
+  afficherPosition(lat, lng, 'SIMULATION');
+  demoTimer = setInterval(() => {
+    lat += (Math.random() - 0.5) * 0.0006;
+    lng += (Math.random() - 0.5) * 0.0006;
+    afficherPosition(lat, lng, 'SIMULATION');
+  }, 2000);
+}
+</script>
 </body>
 </html>
