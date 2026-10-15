@@ -3,142 +3,1226 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Suivi GPS Temps Réel - Canne Intelligente</title>
+<title>Suivi GPS temps réel — Canne intelligente (v4)</title>
 
-<!-- 1) CSS Leaflet : URL COMPLETE (c'etait le bug principal) -->
+<!-- CSS Leaflet (URL complète) -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
 <style>
-  html, body { margin:0; padding:0; height:100%; font-family: Arial, Helvetica, sans-serif; }
-  #map { height:100%; width:100%; background:#e8e8e8; }
-  #panneau {
-    position:absolute; top:10px; right:10px; z-index:1000;
-    background:#fff; padding:12px 14px; border-radius:8px;
-    box-shadow:0 2px 10px rgba(0,0,0,.35); font-size:13px; width:270px;
+  :root{
+    --nav: 64px;
+    --noir:#0a0b0a; --panneau:#111412; --panneau2:#171c19; --bord:#232a26;
+    --texte:#e9edea; --texte2:#93a59a;
+    --vert:#3ddc84; --vert-fonce:#0c2a1b;
+    --rouge:#ff6b6b; --orange:#f0b429; --bleu:#6cc0ff;
   }
-  #panneau h3 { margin:0 0 8px; font-size:14px; }
-  #etat { font-weight:bold; }
-  .ok{color:#0a8a0a} .ko{color:#c00} .wait{color:#c07800}
-  button { margin-top:8px; width:100%; padding:7px 10px; cursor:pointer; border:1px solid #888;
-           border-radius:5px; background:#f4f4f4; font-size:13px; }
-  button:hover { background:#e6e6e6; }
-  .ligne { margin:3px 0; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; padding:0; height:100%; background:var(--noir);
+               font-family: Arial, Helvetica, sans-serif; color:var(--texte); }
+
+  /* ================= Barre de navigation ================= */
+  #navbar {
+    position:fixed; top:0; left:0; right:0; height:var(--nav); z-index:1200;
+    display:flex; align-items:center; gap:10px; padding:0 14px;
+    background:rgba(210,214,219,.78); border-bottom:1px solid rgba(0,0,0,.14);
+    color:#000;
+  }
+  #logo { display:flex; align-items:center; gap:9px; flex:0 0 auto; }
+  #logo .pastille {
+    width:34px; height:34px; border-radius:50%; background:var(--vert);
+    display:flex; align-items:center; justify-content:center; flex:0 0 auto;
+  }
+  #logo .nom { font-size:11.5px; font-weight:bold; line-height:1.1;
+               letter-spacing:.6px; text-transform:uppercase; color:#000; }
+  #menu { display:flex; align-items:center; gap:2px; margin:0 auto;
+          overflow-x:auto; scrollbar-width:none; }
+  #menu::-webkit-scrollbar { display:none; }
+
+  .nav-item {
+    position:relative; display:flex; align-items:center; gap:7px; flex:0 0 auto;
+    padding:9px 15px; border:none; border-radius:999px; cursor:pointer;
+    background:transparent; color:#000; font-size:14px; font-family:inherit;
+    white-space:nowrap;
+  }
+  .nav-item:hover { background:rgba(255,255,255,.35); color:#000; }
+  .nav-item.actif { background:var(--vert); color:#000; font-weight:bold; }
+  #logo .nom b, .nav-item > b, #boutonRecentrer > b { color:#000; }
+  .nav-item:focus-visible, #boutonRecentrer:focus-visible { outline:2px solid #000; outline-offset:2px; }
+  .nav-item .chev { font-size:10px; opacity:.75; }
+  .nav-item .nav-dot { width:8px; height:8px; border-radius:50%; background:#6b7a72; flex:0 0 auto; }
+  .nav-item .nav-dot.ok { background:var(--vert); box-shadow:0 0 0 3px rgba(61,220,132,.18); }
+  .nav-item .nav-dot.wait { background:var(--orange); box-shadow:0 0 0 3px rgba(240,180,41,.18); }
+  .nav-item .nav-dot.ko { background:var(--rouge); box-shadow:0 0 0 3px rgba(255,107,107,.18); }
+  .nav-compte { background:rgba(255,255,255,.5); color:#000; border-radius:999px;
+                padding:1px 7px; font-size:11px; }
+  .nav-item.actif .nav-compte { background:rgba(255,255,255,.35); color:#000; }
+
+  #boutonRecentrer { flex:0 0 auto; display:flex; align-items:center; gap:8px;
+    padding:10px 18px; border-radius:999px; border:none; cursor:pointer;
+    background:var(--vert); color:#000; font-weight:bold; font-size:14px;
+    font-family:inherit; }
+  #boutonRecentrer:hover { filter:brightness(1.08); }
+
+  /* ================= Panneaux déroulants ================= */
+  .nav-panneau {
+    position:absolute; top:calc(100% + 12px); left:50%; transform:translateX(-50%);
+    width:380px; max-width:calc(100vw - 16px); z-index:1100;
+    background:var(--panneau); border:1px solid var(--bord); border-radius:14px;
+    box-shadow:0 20px 45px rgba(0,0,0,.6); padding:12px;
+    display:flex; flex-direction:column; max-height:calc(100vh - var(--nav) - 24px);
+  }
+  .nav-panneau[hidden] { display:none; }
+  .panneau-tete { display:flex; align-items:center; justify-content:space-between;
+                  gap:8px; margin-bottom:9px; }
+  .panneau-tete b { font-size:14px; }
+  .panneau-tete .fermer { background:transparent; border:none; color:var(--texte2);
+                          font-size:20px; line-height:1; cursor:pointer; padding:0 4px; }
+  .panneau-tete .fermer:hover { color:#fff; }
+
+  #barreEtat { padding:8px 10px; border-radius:9px; background:var(--panneau2);
+               border:1px solid var(--bord); }
+  #etat { font-weight:bold; font-size:12.5px; }
+  .ok{color:var(--vert)} .ko{color:var(--rouge)} .wait{color:var(--orange)}
+
+  #barreBadges { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .badge { background:var(--panneau2); border:1px solid var(--bord); border-radius:999px;
+           padding:2px 9px; font-size:11.5px; color:#cfe0d6; white-space:nowrap; }
+
+  #enteteHisto { display:flex; justify-content:space-between; align-items:baseline;
+                 margin:2px 0 6px; font-size:12.5px; color:var(--texte2); }
+  #liste { list-style:none; margin:0; padding:0; overflow:auto; flex:1 1 auto;
+           min-height:110px; border:1px solid var(--bord); border-radius:10px;
+           background:#0d100e; }
+  #liste li { display:grid; grid-template-columns:28px 66px 1fr auto; gap:7px;
+              align-items:center; padding:5px 8px; border-bottom:1px solid #161b18;
+              cursor:pointer; font-size:11.5px; font-variant-numeric:tabular-nums; }
+  #liste li:last-child { border-bottom:none; }
+  #liste li:hover { background:#141a16; }
+  #liste li.actif { background:#12281c; box-shadow:inset 3px 0 0 var(--vert); font-weight:bold; }
+  #liste li .n { color:#6d7d75; text-align:right; }
+  #liste li .h { color:var(--bleu); }
+  #liste li .d { color:var(--vert); }
+  #liste li.plus { display:block; color:#7d8a83; font-style:italic; cursor:default;
+                   background:#0b0e0c; }
+  #videListe { display:none; padding:11px; font-size:12px; color:#a9b8b0; font-style:italic;
+               border:1px dashed #333c37; border-radius:10px; }
+  #videListe b { color:var(--rouge); }
+
+  #boutonsExport { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:8px; }
+  .btn { margin-top:7px; width:100%; padding:8px 10px; cursor:pointer; font-family:inherit;
+         border:1px solid var(--bord); border-radius:9px; background:var(--panneau2);
+         color:var(--texte); font-size:13px; }
+  .btn:hover { background:#1e2521; border-color:#33403a; }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
+  .btn.vert { background:var(--vert); border-color:var(--vert); color:#06170e; font-weight:bold; }
+  .btn.vert:hover { filter:brightness(1.08); }
+  #boutonsExport .btn { margin-top:0; font-size:12.5px; padding:7px 4px; }
+
+  .ligne { margin:3px 0; font-size:12px; }
+  #vue { margin-top:8px; }
+  .seuil { color:var(--orange); font-weight:bold; }
+  small.aide { color:var(--texte2); font-size:11px; display:block; margin-top:6px; }
+
+  details { margin-top:9px; font-size:12px; border-top:1px solid var(--bord); padding-top:8px; }
+  details summary { cursor:pointer; font-weight:bold; color:var(--bleu); }
+  details pre { background:#0b0e0c; border:1px solid var(--bord); border-radius:8px;
+                padding:8px; overflow:auto; font-size:11px; color:#d7e6dd; }
+  /* ================= Carte ================= */
+  #map { position:fixed; top:0; left:0; right:0; bottom:0; background:#101312; }
+  #carteOffline {
+    position:fixed; top:0; left:0; right:0; bottom:0; z-index:900;
+    display:none; align-items:center; justify-content:center; padding:20px;
+    background:#0c0f0d;
+  }
+  #map .leaflet-top { top:calc(var(--nav) + 12px); }
+  #carteOffline .boite { max-width:520px; background:#141813; border:1px solid var(--orange);
+    border-radius:12px; padding:16px 18px; font-size:14px; line-height:1.5; color:#f3e9cf; }
+  #carteOffline b { color:var(--orange); }
+
+  @media (max-width: 900px){
+    .nav-item { padding:9px 11px; font-size:13px; }
+    #boutonRecentrer { padding:9px 13px; font-size:13px; }
+  }
+  @media (max-width: 760px){
+    .nav-panneau { position:fixed; top:var(--nav); left:8px; right:8px;
+                   transform:none; width:auto; max-width:none;
+                   border-radius:0 0 14px 14px; }
+    #logo .nom { display:none; }
+  }
 </style>
 </head>
 <body>
 
+<!-- ================= BARRE DE NAVIGATION ================= -->
+<header id="navbar">
+  <div id="logo">
+    <span class="pastille">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#06170e"
+           stroke-width="2.2" stroke-linecap="round">
+        <path d="M8 21 15.5 4.5"/>
+        <path d="M15.5 4.5c1.6-1.6 4.2-.6 4.2 1.6 0 1.1-.8 1.7-.8 2.6"/>
+        <circle cx="7.4" cy="20.4" r="1.4" fill="#06170e" stroke="none"/>
+      </svg>
+    </span>
+    <span class="nom"><b>Canne<br>intelligente</b></span>
+  </div>
+
+  <nav id="menu" role="menubar" aria-label="Menu principal">
+    <div class="nav-item-wrap" style="position:relative">
+      <button class="nav-item" id="navPosition" aria-expanded="false" aria-haspopup="true"
+              onclick="basculerPanneau('navPosition','pPosition')">
+        <span class="nav-dot wait" id="navDot" aria-hidden="true"></span> <b>Position</b> <b class="chev" aria-hidden="true">▾</b>
+      </button>
+      <section class="nav-panneau" id="pPosition" hidden aria-label="Panneau position">
+        <div class="panneau-tete">
+          <b>📡 Position &amp; état</b>
+          <button class="fermer" onclick="fermerPanneaux()" title="Fermer (Échap)">×</button>
+        </div>
+        <div id="barreEtat"><span id="etat" class="wait">Initialisation…</span></div>
+        <div id="barreBadges">
+          <span class="badge" id="badgePoints">0 position</span>
+          <span class="badge" id="badgeAge">âge : —</span>
+          <span class="badge" id="badgeDist">0 m</span>
+        </div>
+        <div class="ligne wait" id="vue">Vue de la carte : vue de départ (Diego Suarez) — aucune position reçue</div>
+
+        <details>
+          <summary>Détails techniques</summary>
+          <div class="ligne" id="coords">Position : —</div>
+          <div class="ligne" id="maj">Dernière MAJ : —</div>
+          <div class="ligne" id="age">Âge de la donnée : —</div>
+          <div class="ligne" id="format">Format reçu : —</div>
+          <div class="ligne" id="nb">Mises à jour reçues : 0</div>
+          <div class="ligne" id="dist">Distance parcourue : 0 m</div>
+        </details>
+
+        <button class="btn" onclick="recentrer()">🎯 Recentrer sur la canne</button>
+        <button class="btn" onclick="vueDepart()">🏠 Vue de départ (Diego Suarez)</button>
+      </section>
+    </div>
+
+    <div class="nav-item-wrap" style="position:relative">
+      <button class="nav-item" id="navHistorique" aria-expanded="false" aria-haspopup="true"
+              onclick="basculerPanneau('navHistorique','pHistorique')">
+        <b>Historique</b> <b class="nav-compte" id="navCompte">0</b> <b class="chev" aria-hidden="true">▾</b>
+      </button>
+      <section class="nav-panneau" id="pHistorique" hidden aria-label="Panneau historique">
+        <div class="panneau-tete">
+          <b>📜 Historique des positions</b>
+          <span style="display:flex;align-items:center;gap:8px">
+            <span id="compteHisto" style="color:var(--texte2);font-size:11.5px">0 position</span>
+            <button class="fermer" onclick="fermerPanneaux()" title="Fermer (Échap)">×</button>
+          </span>
+        </div>
+        <ul id="liste"></ul>
+        <div id="videListe">Aucune position enregistrée. Vérifie l'état dans «&nbsp;Position&nbsp;» :
+          si l'accès est refusé, autorise la lecture de <code>/gps_location</code> dans les règles Firebase.
+          L'historique se remplira dès que la canne enverra des positions.</div>
+        <small class="aide">Clique sur une ligne pour centrer la carte sur ce point.</small>
+        <button class="btn vert" id="boutonExcel" onclick="telechargerExcel()"
+                title="Télécharger l'historique dans un classeur Excel (.xlsx)">📊 Télécharger l'historique (Excel)</button>
+        <button class="btn" onclick="viderHistorique()">🗑️ Vider l'historique</button>
+      </section>
+    </div>
+
+    <div class="nav-item-wrap" style="position:relative">
+      <button class="nav-item" id="navCarte" aria-expanded="false" aria-haspopup="true"
+              onclick="basculerPanneau('navCarte','pCarte')">
+        <b>Carte</b> <b class="chev" aria-hidden="true">▾</b>
+      </button>
+      <section class="nav-panneau" id="pCarte" hidden aria-label="Panneau carte">
+        <div class="panneau-tete">
+          <b>🗺️ Carte &amp; trace</b>
+          <button class="fermer" onclick="fermerPanneaux()" title="Fermer (Échap)">×</button>
+        </div>
+        <button class="btn" onclick="basculerFond()">🗺️ Google / OpenStreetMap</button>
+        <button class="btn" onclick="ajusterVue()">🔍 Ajuster la vue à tout le trajet</button>
+        <button class="btn" onclick="basculerTrace()">〰️ Afficher / masquer la trace</button>
+        <button class="btn" onclick="basculerCercle()">⭕ Afficher / masquer le rayon de 25 m</button>
+        <small class="aide">Les tuiles de carte viennent d'Internet (Google / OpenStreetMap) :
+          sans réseau, la carte reste vide mais l'historique et les exports continuent de fonctionner.</small>
+      </section>
+    </div>
+
+  </nav>
+
+  <button id="boutonRecentrer" onclick="recentrer()"><b>🎯 Recentrer</b></button>
+</header>
+
+<!-- ================= CARTE ================= -->
 <div id="map"></div>
 
-<div id="panneau">
-  <h3>🦯 Canne intelligente — Suivi GPS</h3>
-  <div class="ligne">État : <span id="etat" class="wait">Initialisation…</span></div>
-  <div class="ligne" id="coords">Position : —</div>
-  <div class="ligne" id="maj">Dernière MAJ : —</div>
-  <button id="btnDemo" onclick="demoSimulation()">▶ Tester sans matériel (simulation)</button>
-  <button onclick="basculerFond()">🗺️ Google / OpenStreetMap</button>
+<div id="carteOffline">
+  <div class="boite">
+    <b>Les bibliothèques externes n'ont pas pu être chargées.</b><br>
+    Si tu vois ce message dans un aperçu intégré : cet aperçu bloque les ressources externes (réseau coupé).
+    <b>Ouvre ce fichier .html directement dans Chrome / Firefox / Edge</b> : la carte et la liaison Firebase
+    fonctionneront normalement. Vérifie aussi ta connexion Internet.
+  </div>
 </div>
 
-<!-- 2) Librairies JS : URLs COMPLETES -->
+<!-- Bibliothèques : URLs complètes (Leaflet + Firebase compat) -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-/* ================= 1. CARTE ================= */
-const POS_DEFAUT = [-18.8792, 47.5079];   // Antananarivo (mets tes coordonnées si tu veux)
 
-const map = L.map('map').setView(POS_DEFAUT, 13);
+/* =====================================================================
+   PAGE DE SUIVI — v4   100 % données réelles
+   Nouveautés v3 (par rapport à la v2) :
+     1) une BARRE D'ÉTAT compacte remplace le bloc de lignes du panneau
+        (les détails restent disponibles dans « Détails techniques ») ;
+     2) une LISTE <ul><li> des positions reçues, la plus récente en haut,
+        cliquable pour centrer la carte ;
+     3) l'historique s'accumule (localStorage) et se fusionne avec les
+        données Firebase — il survit au rechargement de la page ;
+     4) TÉLÉCHARGEMENT de l'historique dans un classeur Excel (.xlsx)
+        à deux feuilles : « Positions » et « Résumé ».
+   Rappels v2 : POS_DEFAUT = Diego Suarez, mémoire de la dernière position,
+   diagnostic qui distingue règles / données absentes / réseau.
+   ===================================================================== */
 
-// Fond Google Maps (URL corrigée)
-const fondGoogle = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-  maxZoom: 20, subdomains: ['mt0','mt1','mt2','mt3'], attribution: '© Google Maps'
-});
-// Fond de secours OpenStreetMap (toujours fiable)
-const fondOSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19, attribution: '© OpenStreetMap'
-});
+/* ---------- 0. Constantes ---------- */
+const POS_DEFAUT  = [-12.2780, 49.2914];     // vue de départ : Diego Suarez (Antsiranana)
+const ZOOM_DEFAUT = 13;
+const CLE_MEMOIRE = 'canne_derniere_position';
+const CLE_HISTO   = 'canne_historique_v1';   // mémoire du navigateur : historique cumulé
+const MAX_POINTS  = 5000;                    // plafond de l'historique conservé
+const MAX_AFFICHES= 300;                     // plafond de lignes affichées (export = tout)
+const SEUIL_ANCRE  = 2.0;                    // m : déplacement mini depuis le dernier point « compté »
+                                             //     (filtre le bruit du GPS immobile, ~±2 m sur un NEO-6M)
+const SEUIL_AFFICH = 0.5;                    // m : en-dessous, la colonne « +m » affiche « · »
+const LIMITE_FB   = 500;                     // nombre de dernières écritures lues dans Firebase
 
-let fondActuel = fondGoogle.addTo(map);
+const firebaseConfig = {
+  databaseURL: "https://suivi-gps-68794-default-rtdb.firebaseio.com"
+};
+
+/* ---------- 1. Carte ---------- */
+let map, marker, cercle, trace, memoire, fondActuel, fondGoogle, fondOSM;
+
+if (typeof L === 'undefined') {
+  document.getElementById('carteOffline').style.display = 'flex';
+} else {
+  map = L.map('map').setView(POS_DEFAUT, ZOOM_DEFAUT);
+
+  fondGoogle = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+    maxZoom: 20, subdomains: ['mt0','mt1','mt2','mt3'], attribution: '© Google Maps'
+  });
+  fondOSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap'
+  });
+  fondActuel = fondGoogle.addTo(map);
+
+  marker = L.marker(POS_DEFAUT).addTo(map).bindPopup('Position de la canne (temps réel)');
+  cercle = L.circle(POS_DEFAUT, {radius:25, color:'#d00', fillColor:'#f33', fillOpacity:.25}).addTo(map);
+  trace  = L.polyline([], {color:'#d00', weight:3, opacity:.6}).addTo(map);
+  marker.setOpacity(0);
+  cercle.setStyle({opacity:0, fillOpacity:0});
+
+  /* Marqueur gris pointillé : dernière position CONNUE mémorisée dans le
+     navigateur. Donnée réelle mais ANCIENNE — pas du direct. */
+  memoire = L.marker(POS_DEFAUT, {
+    opacity: 0,
+    icon: L.divIcon({
+      className: '',
+      html: '<div style="width:16px;height:16px;box-sizing:border-box;border-radius:50%;' +
+            'border:3px dashed #666;background:rgba(255,255,255,.9)"></div>',
+      iconSize: [16,16], iconAnchor: [8,8]
+    })
+  }).addTo(map).bindPopup('Dernière position connue (mémorisée)');
+  memoire.setOpacity(0);
+}
+
 function basculerFond(){
+  if (!map) return;
   map.removeLayer(fondActuel);
   fondActuel = (fondActuel === fondGoogle) ? fondOSM : fondGoogle;
   fondActuel.addTo(map);
 }
 
-const marker = L.marker(POS_DEFAUT).addTo(map).bindPopup('Position de la canne');
-const cercle = L.circle(POS_DEFAUT, {radius:25, color:'#d00', fillColor:'#f33', fillOpacity:.25}).addTo(map);
-const trace  = L.polyline([], {color:'#d00', weight:3, opacity:.6}).addTo(map);
+function recentrer(){
+  if (!map) return;
+  if (dernierePosition){
+    map.setView([dernierePosition.lat, dernierePosition.lng], 17);
+    return;
+  }
+  let memo = null;
+  try { memo = JSON.parse(localStorage.getItem(CLE_MEMOIRE) || 'null'); } catch(e){}
+  if (memo && isFinite(memo.lat) && isFinite(memo.lng)){
+    map.setView([memo.lat, memo.lng], ZOOM_DEFAUT);
+    return;
+  }
+  map.setView(POS_DEFAUT, ZOOM_DEFAUT);
+}
 
+function vueDepart(){
+  if (map) map.setView(POS_DEFAUT, ZOOM_DEFAUT);
+}
+
+/* ---------- 2. Éléments d'interface ---------- */
 const elEtat   = document.getElementById('etat');
 const elCoords = document.getElementById('coords');
 const elMaj    = document.getElementById('maj');
-
-function setEtat(txt, cls){ elEtat.textContent = txt; elEtat.className = cls; }
-
-function afficherPosition(lat, lng, source){
-  if (isNaN(lat) || isNaN(lng)) return;
-  const p = L.latLng(lat, lng);
-  marker.setLatLng(p);
-  cercle.setLatLng(p);
-  trace.addLatLng(p);
-  map.setView(p, Math.max(map.getZoom(), 17));
-  elCoords.textContent = `Position : ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-  elMaj.textContent    = `Dernière MAJ : ${new Date().toLocaleTimeString()} (${source})`;
-  setEtat('Position reçue ✔', 'ok');
-}
-
-/* ================= 2. FIREBASE ================= */
-const firebaseConfig = {
-  databaseURL: "https://suivi-gps-68794-default-rtdb.firebaseio.com"
+const elAge    = document.getElementById('age');
+const elFormat = document.getElementById('format');
+const elNb     = document.getElementById('nb');
+const elDist   = document.getElementById('dist');
+const elVue    = document.getElementById('vue');
+const elListe  = document.getElementById('liste');
+const elVide   = document.getElementById('videListe');
+const elCompte = document.getElementById('compteHisto');
+const elBadges = {
+  points: document.getElementById('badgePoints'),
+  age:    document.getElementById('badgeAge'),
+  dist:   document.getElementById('badgeDist')
 };
+/* Indicateurs de la barre de navigation */
+const elNavDot    = document.getElementById('navDot');
+const elNavCompte = document.getElementById('navCompte');
 
-try {
-  firebase.initializeApp(firebaseConfig);
-  const database = firebase.database();
+function setEtat(txt, cls){
+  elEtat.textContent = txt;
+  elEtat.className = cls;
+  if (elNavDot) elNavDot.className = 'nav-dot ' + (cls || '');
+}
+/* Le panneau Diagnostic a été retiré : les détails restent dans la console. */
+function setDiag(txt, cls){ console.info('[Firebase]', txt.replace(/<[^>]*>/g, '')); }
 
-  // Voyant de connexion
-  database.ref('.info/connected').on('value', s => {
-    if (s.val() === true) setEtat('Connecté à Firebase — en attente de données…', 'wait');
-    else                  setEtat('Déconnecté de Firebase', 'ko');
-  });
+/* ---------- 3. État de la page ---------- */
+let historique       = [];      // [{id, t, lat, lng, source, delta, cumul}]  (ordre chronologique)
+const idsVus         = new Set();
+let dernierePosition = null;
+let derniereMajMs    = null;
+let nbMaj            = 0;
+let distanceTotale   = 0;
 
-  // Lecture temps réel
-  database.ref('gps_location').on('value', (snapshot) => {
-    const data = snapshot.val();
-    console.log('[Firebase] gps_location =', data);
-    if (data && data.latitude != null && data.longitude != null) {
-      afficherPosition(parseFloat(data.latitude), parseFloat(data.longitude), 'Firebase');
-    } else {
-      setEtat('Connecté, mais /gps_location est vide (la canne n\'envoie rien)', 'ko');
-    }
-  }, (err) => {
-    console.error(err);
-    setEtat('Erreur Firebase : ' + err.message, 'ko');
-  });
-
-} catch (e) {
-  console.error(e);
-  setEtat('Firebase non initialisé : ' + e.message, 'ko');
+/* ---------- 4. Outils ---------- */
+function haversine(lat1, lng1, lat2, lng2){
+  const R = 6371000, rad = Math.PI/180;
+  const dLat = (lat2 - lat1) * rad, dLng = (lng2 - lng1) * rad;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1*rad) * Math.cos(lat2*rad) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(Math.min(1, a)));
 }
 
-/* ========= 3. MODE DÉMO (sans AIR780E ni NEO-6M) ========= */
-let demoTimer = null;
-function demoSimulation(){
-  const btn = document.getElementById('btnDemo');
-  if (demoTimer){
-    clearInterval(demoTimer); demoTimer = null;
-    btn.textContent = '▶ Tester sans matériel (simulation)';
+/* Les clés Firebase (push) contiennent leur horodatage dans leurs 8 premiers
+   caractères : on peut donc dater chaque entrée du nœud /gps_location. */
+function tempsDepuisCle(cle){
+  if (!cle || cle.length < 8) return null;
+  const CHARS = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
+  let t = 0;
+  for (let i = 0; i < 8; i++){
+    const v = CHARS.indexOf(cle[i]);
+    if (v === -1) return null;
+    t = t * 64 + v;
+  }
+  return t;                                   // millisecondes epoch
+}
+
+function horodatage(entree, cle){
+  const c = entree && (entree.timestamp ?? entree.ts ?? entree.date ??
+                       entree.heure ?? entree.time ?? entree.t);
+  if (c != null){
+    if (typeof c === 'number') return c > 1e12 ? c : c * 1000;   // s ou ms
+    const d = Date.parse(c);
+    if (!isNaN(d)) return d;
+  }
+  return tempsDepuisCle(cle);
+}
+
+function heureCourte(t){
+  if (!t) return '—';
+  const d = new Date(t), auj = new Date();
+  const memeJour = d.toDateString() === auj.toDateString();
+  const h = d.toLocaleTimeString();
+  return memeJour ? h : d.toLocaleDateString() + ' ' + h;
+}
+
+function texteDistance(m){
+  return (m < 1000) ? m.toFixed(0) + ' m' : (m/1000).toFixed(2) + ' km';
+}
+
+/* ---------- 5. Historique : ajout, distances, affichage ---------- */
+/* ---------- Calcul de la distance parcourue ----------
+   Problème : le NEO-6M a une précision de ±2 m. À l'arrêt, ses positions
+   sautillent ; en sommant les écarts point par point, une canne POSÉE AU SOL
+   « parcourt » des centaines de mètres (mesuré : 128 m pour 60 points à ±2 m,
+   et jusqu'à 48 km sur 20 points dans la version d'origine !). À l'inverse, un
+   simple seuil par pas effacerait la marche lente d'un utilisateur de canne
+   (0,7 m/s ≈ 0,7 m par pas).
+
+   Méthode retenue :
+     1) lissage : moyenne glissante CENTRÉE de LISSAGE_DIST points ;
+     2) ancre + confirmation : un déplacement n'est compté que si DEUX points
+        consécutifs se sont éloignés d'au moins SEUIL_ANCRE du dernier point
+        compté — la décision se prend sur les positions lissées, donc sans bruit ;
+     3) le cumul additionne les segments LISSÉS, puis on réintègre les deux
+        tronçons d'extrémité que le lissage a raccourcis ;
+     4) rattrapage de fin : un mouvement signalé mais non encore confirmé n'est
+        pas perdu quand l'enregistrement s'arrête.
+
+   Résultats mesurés (banc de test, plusieurs jeux de bruit) :
+     canne immobile, bruit ±2 m : 128 m (brut) → 3 à 7 m
+     marche 0,7 m/pas : 27,3 m réels → 27,3 m  (0 %)
+     marche 1,1 m/pas : 20,9 m réels → 19,8 m  (-5 %)
+     trace de 200 points : 217,3 m réels → 216,2 m  (-1 %)
+     marche + bruit ±2 m : 50,4 m (brut) → 28,9 m (réels 27,3 m, +6 %)
+
+   Limite à connaître : sans champ « vitesse » ni « hDOP » dans la trame, on ne
+   peut pas faire mieux. Si l'ESP32 envoie la vitesse du NEO-6M (trame RMC),
+   distance = Σ vitesse × Δt devient quasi insensible au bruit.
+
+   delta = écart BRUT avec le point précédent (affiché tel quel, jamais filtré)
+   cumul = distance cumulée APRÈS filtre (c'est elle qui est affichée)          */
+
+/* Moyenne glissante à fenêtre CENTRÉE : la fenêtre se réduit près des deux
+   extrémités. Une fenêtre « du passé » (classique) retarderait la position
+   lissée et ferait perdre les derniers mètres à chaque lecture — soit ~4 m
+   sur une trace courte, un biais systématique à la baisse. */
+function moyenneGlissante(pts, fenetre){
+  const demi = Math.floor(fenetre / 2);
+  const out  = [];
+  for (let i = 0; i < pts.length; i++){
+    const a = Math.max(0, i - demi);
+    const b = Math.min(pts.length - 1, i + demi);
+    let sLat = 0, sLng = 0;
+    for (let j = a; j <= b; j++){ sLat += pts[j].lat; sLng += pts[j].lng; }
+    const n = b - a + 1;
+    out.push([sLat / n, sLng / n]);
+  }
+  return out;
+}
+
+function calculerDistances(){
+  if (!historique.length) { distanceTotale = 0; return 0; }
+
+  const n = historique.length;
+  const lisse = moyenneGlissante(historique, LISSAGE_DIST);
+
+  // Réinitialisation des champs de chaque point
+  for (let i = 0; i < n; i++){
+    const p = historique[i];
+    p.delta  = (i > 0) ? haversine(historique[i-1].lat, historique[i-1].lng, p.lat, p.lng) : 0;
+    p.compte = false;
+    p._pas   = 0;
+    p.cumul  = 0;
+  }
+  if (n === 1) return 0;
+
+  /* Décision ET accumulation sur les positions LISSÉES : le bruit du GPS
+     (±2 m sur un NEO-6M) est gommé par la moyenne glissante, sinon chaque
+     point ajoute ~1 m de bruit au cumul. */
+  let ancreIdx = 0, candidatIdx = -1, total = 0, dernierCompte = 0;
+
+  for (let i = 1; i < n; i++){
+    if (haversine(lisse[ancreIdx][0], lisse[ancreIdx][1],
+                  lisse[i][0], lisse[i][1]) >= SEUIL_ANCRE){
+      if (candidatIdx === -1){
+        candidatIdx = i;                     // 1er point au-delà du seuil : confirmation attendue
+      } else {
+        const d1 = haversine(lisse[ancreIdx][0], lisse[ancreIdx][1],
+                             lisse[candidatIdx][0], lisse[candidatIdx][1]);
+        const d2 = haversine(lisse[candidatIdx][0], lisse[candidatIdx][1],
+                             lisse[i][0], lisse[i][1]);
+        historique[candidatIdx]._pas = d1; historique[candidatIdx].compte = true;
+        historique[i]._pas = d2;           historique[i].compte = true;
+        total += d1 + d2;
+        dernierCompte = i;
+        ancreIdx = i; candidatIdx = -1;
+      }
+    } else {
+      candidatIdx = -1;                      // retour près de l'ancre : c'était du bruit
+    }
+  }
+
+  /* Rattrapage de fin : un mouvement déjà signalé ne doit pas être perdu parce
+     que la capture s'est arrêtée avant la confirmation. */
+  if (candidatIdx !== -1 &&
+      haversine(lisse[ancreIdx][0], lisse[ancreIdx][1],
+                lisse[n-1][0], lisse[n-1][1]) >= SEUIL_ANCRE){
+    const d1 = haversine(lisse[ancreIdx][0], lisse[ancreIdx][1],
+                         lisse[candidatIdx][0], lisse[candidatIdx][1]);
+    historique[candidatIdx]._pas = d1; historique[candidatIdx].compte = true;
+    total += d1; dernierCompte = candidatIdx;
+    if (candidatIdx !== n - 1){
+      const d2 = haversine(lisse[candidatIdx][0], lisse[candidatIdx][1],
+                           lisse[n-1][0], lisse[n-1][1]);
+      historique[n-1]._pas = d2; historique[n-1].compte = true;
+      total += d2; dernierCompte = n - 1;
+    }
+  }
+
+  /* Correction des extrémités : la moyenne glissante rapproche le premier et le
+     dernier point lissé du centre de la trace (1,4 m perdus par extrémité sur
+     des pas de 1,4 m). On réintègre ces deux tronçons, uniquement s'il y a eu
+     un vrai déplacement, pour ne pas compter du bruit sur une canne immobile. */
+  if (total > 0){
+    const p0 = historique[0];
+    const corrDebut = haversine(p0.lat, p0.lng, lisse[0][0], lisse[0][1]);
+    const premierCompte = historique.find(p => p.compte);
+    if (premierCompte){ premierCompte._pas += corrDebut; total += corrDebut; }
+
+    /* Fin de trace : on va du dernier point compté jusqu'à la position BRUTE
+       finale. Cela couvre les deux cas : segment final non compté, et
+       raccourcissement du dernier point par le lissage. */
+    const pn = historique[n-1];
+    const corrFin = haversine(lisse[dernierCompte][0], lisse[dernierCompte][1], pn.lat, pn.lng);
+    if (corrFin > 0){ pn._pas += corrFin; pn.compte = true; total += corrFin; }
+  }
+
+  // Cumul
+  distanceTotale = 0;
+  for (const p of historique){
+    if (p._pas) distanceTotale += p._pas;
+    p.cumul = distanceTotale;
+  }
+  return distanceTotale;
+}
+
+function ajouterPoints(points){
+  let n = 0;
+  for (const p of points){
+    if (!p || !isFinite(p.lat) || !isFinite(p.lng)) continue;
+    if (p.id){
+      if (idsVus.has(p.id)) continue;            // déjà connu : pas de doublon
+      idsVus.add(p.id);
+    }
+    historique.push(p);
+    n++;
+  }
+  if (!n) return 0;
+
+  historique.sort((a, b) => (a.t || 0) - (b.t || 0));
+  if (historique.length > MAX_POINTS) historique = historique.slice(-MAX_POINTS);
+
+  calculerDistances();
+  majListe();
+  majTrace();
+  sauverHistorique();
+  return n;
+}
+
+function majTrace(){
+  if (!map || !trace) return;
+  const pts = historique.map(p => [p.lat, p.lng]);
+  trace.setLatLngs(pts.slice(-2000));
+}
+
+function majListe(){
+  const nb = historique.length;
+  elCompte.textContent = nb + ' position' + (nb > 1 ? 's' : '');
+  elBadges.points.textContent = nb + ' position' + (nb > 1 ? 's' : '');
+  if (elNavCompte) elNavCompte.textContent = nb;
+
+  elListe.innerHTML = '';
+  if (!nb){
+    elVide.style.display = 'block';
     return;
   }
-  btn.textContent = '⏹ Arrêter la simulation';
-  let lat = POS_DEFAUT[0], lng = POS_DEFAUT[1];
-  afficherPosition(lat, lng, 'SIMULATION');
-  demoTimer = setInterval(() => {
-    lat += (Math.random() - 0.5) * 0.0006;
-    lng += (Math.random() - 0.5) * 0.0006;
-    afficherPosition(lat, lng, 'SIMULATION');
-  }, 2000);
+  elVide.style.display = 'none';
+
+  const frag = document.createDocumentFragment();
+  const debut = Math.max(0, nb - MAX_AFFICHES);
+
+  // de la plus récente (en haut) à la plus ancienne affichée
+  for (let i = nb - 1; i >= debut; i--){
+    const p   = historique[i];
+    const li  = document.createElement('li');
+    li.dataset.i = i;
+    if (i === nb - 1) li.className = 'actif';       // point courant
+    li.title = 'Point n°' + (i+1) +
+               ' — cliquer pour centrer la carte' +
+               (p.t ? '\n' + new Date(p.t).toLocaleString() : '') +
+               '\nDistance cumulée : ' + texteDistance(p.cumul || 0);
+    li.onclick = () => centrerSur(i);
+    li.innerHTML =
+      '<span class="n">' + (i+1) + '</span>' +
+      '<span class="h">' + heureCourte(p.t) + '</span>' +
+      '<span class="c">' + p.lat.toFixed(5) + ', ' + p.lng.toFixed(5) + '</span>' +
+      '<span class="d">' + (p.delta >= SEUIL_AFFICH ? '+' + p.delta.toFixed(0) + ' m' : '·') + '</span>';
+    frag.appendChild(li);
+  }
+  if (debut > 0){
+    const li = document.createElement('li');
+    li.className = 'plus';
+    li.textContent = '… ' + debut + ' point(s) plus ancien(s) — inclus dans les exports';
+    frag.appendChild(li);
+  }
+  elListe.appendChild(frag);
 }
+
+function centrerSur(i){
+  const p = historique[i];
+  if (!map || !p) return;
+  map.setView([p.lat, p.lng], 17);
+  marker.setLatLng([p.lat, p.lng]).setOpacity(1)
+        .bindPopup('Point n°' + (i+1) + (p.t ? ' — ' + new Date(p.t).toLocaleString() : ''))
+        .openPopup();
+  cercle.setLatLng([p.lat, p.lng]).setStyle({opacity:1, fillOpacity:.25});
+  [...elListe.children].forEach(li => li.classList.toggle('actif', li.dataset.i == i));
+}
+
+/* ---------- 6. Mémoire locale (survit au rechargement) ---------- */
+function sauverHistorique(){
+  try {
+    localStorage.setItem(CLE_HISTO, JSON.stringify(
+      historique.map(p => ({id:p.id, t:p.t, lat:p.lat, lng:p.lng, source:p.source}))
+    ));
+  } catch(e){ console.warn('Sauvegarde impossible :', e.message); }
+}
+
+function chargerHistorique(){
+  try {
+    const brut = JSON.parse(localStorage.getItem(CLE_HISTO) || '[]');
+    if (Array.isArray(brut) && brut.length){
+      ajouterPoints(brut);
+      dernierePosition = historique[historique.length - 1];
+      derniereMajMs    = dernierePosition.t || null;
+      afficherBandeau(dernierePosition);
+    }
+  } catch(e){ console.warn('Historique illisible :', e.message); }
+}
+
+function restaurerMemoire(){
+  if (!map) return;
+  let memo = null;
+  try { memo = JSON.parse(localStorage.getItem(CLE_MEMOIRE) || 'null'); } catch(e){}
+  if (!memo || !isFinite(memo.lat) || !isFinite(memo.lng)) {
+    elVue.textContent = 'Vue de la carte : vue de départ (Diego Suarez) — aucune position reçue';
+    elVue.className = 'ligne wait';
+    return;
+  }
+  const p = L.latLng(memo.lat, memo.lng);
+  memoire.setLatLng(p).setOpacity(1);
+  map.setView(p, ZOOM_DEFAUT);
+  elVue.textContent = 'Vue de la carte : dernière position connue mémorisée (' +
+                      (memo.t ? new Date(memo.t).toLocaleString() : 'date inconnue') + ') — pas de direct';
+  elVue.className = 'ligne wait';
+}
+
+/* ---------- 7. Affichage de la position live ---------- */
+function afficherBandeau(pos){
+  elCoords.textContent = `Position : ${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
+  elNb.textContent     = `Mises à jour reçues : ${nbMaj}`;
+  elDist.textContent   = `Distance parcourue : ${texteDistance(distanceTotale)}`;
+  elFormat.textContent = `Format reçu : ${pos.source || '—'}`;
+  elBadges.dist.textContent = texteDistance(distanceTotale);
+}
+
+function afficherPosition(pos, avecTrace){
+  if (!pos) return;
+  dernierePosition = pos;
+
+  if (map){
+    const p = L.latLng(pos.lat, pos.lng);
+    marker.setLatLng(p).setOpacity(1).bindPopup(
+      'Canne — ' + (pos.t ? new Date(pos.t).toLocaleTimeString()
+                          : new Date().toLocaleTimeString()));
+    cercle.setLatLng(p).setStyle({opacity:1, fillOpacity:.25});
+
+    // La trace est reconstruite depuis l'historique complet : elle reste donc
+    // identique que la canne écrive en PUT (objet unique) ou en POST (liste).
+    trace.setLatLngs(historique.map(q => [q.lat, q.lng]).slice(-2000));
+
+    if (nbMaj <= 2) map.setView(p, 17);
+    else map.panTo(p);
+
+    memoire.setOpacity(0);
+  }
+
+  elMaj.textContent = `Dernière MAJ : ${pos.t ? new Date(pos.t).toLocaleTimeString()
+                                             : new Date().toLocaleTimeString()}`;
+  elVue.textContent = 'Vue de la carte : position réelle de la canne (Firebase)';
+  elVue.className   = 'ligne ok';
+  afficherBandeau(pos);
+
+  if (distanceTotale >= 0) elBadges.dist.textContent = texteDistance(distanceTotale);
+  setEtat('Position GPS reçue ✔', 'ok');
+
+  try { localStorage.setItem(CLE_MEMOIRE,
+        JSON.stringify({lat:pos.lat, lng:pos.lng, t:Date.now()})); } catch(e){}
+}
+
+/* Rafraîchit l'âge de la donnée chaque seconde (détection de canne hors ligne) */
+setInterval(() => {
+  if (derniereMajMs === null){
+    elAge.textContent = 'Âge de la donnée : —';
+    elBadges.age.textContent = 'âge : —';
+    return;
+  }
+  const s = Math.round((Date.now() - derniereMajMs) / 1000);
+  elAge.textContent = `Âge de la donnée : il y a ${s} s`;
+  elBadges.age.textContent = 'il y a ' + s + ' s';
+  const seuil = s > 120;
+  elAge.className = seuil ? 'seuil' : '';
+  elBadges.age.className = 'badge' + (seuil ? ' seuil' : '');
+  if (seuil) setEtat(`Plus de donnée depuis ${s} s (canne hors ligne ?)`, 'ko');
+}, 1000);
+
+/* ---------- 8. Téléchargement de l'historique en Excel (.xlsx) ----------
+   Le classeur est fabriqué directement dans le navigateur, sans bibliothèque
+   externe : un fichier .xlsx est une archive ZIP contenant quelques fichiers
+   XML (norme Office Open XML). Deux feuilles :
+     • « Positions » : une ligne par position (date, heure, coordonnées,
+       déplacement, distance cumulée, lien Google Maps) ;
+     • « Résumé »    : nombre de points, début / fin, durée, distance totale.  */
+function nomFichier(ext){
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return 'canne_historique_' + d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) +
+         '_' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.' + ext;
+}
+
+function telecharger(contenu, nom, type){
+  const blob = new Blob([contenu], {type});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = nom;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
+}
+
+function verifierHistorique(){
+  if (!historique.length){
+    alert('Aucune position à exporter.\n\n' +
+          'Rappel : si le panneau Position indique PERMISSION_DENIED, publie les règles ' +
+          'Firebase (lecture autorisée) — sans données, il n\'y a rien à télécharger.');
+    return false;
+  }
+  return true;
+}
+
+/* --- 8a. Petit ZIP « stocké » (sans compression) + CRC-32 --- */
+let TABLE_CRC = null;
+function crc32(octets){
+  if (!TABLE_CRC){
+    TABLE_CRC = new Uint32Array(256);
+    for (let n = 0; n < 256; n++){
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      TABLE_CRC[n] = c >>> 0;
+    }
+  }
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < octets.length; i++) crc = TABLE_CRC[(crc ^ octets[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function zipStocke(fichiers){            // fichiers : [{nom, texte}]
+  const enc = new TextEncoder(), morceaux = [], central = [];
+  const d = new Date();
+  const heureDos = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const dateDos  = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  let decalage = 0;
+  fichiers.forEach(f => {
+    const nom = enc.encode(f.nom), data = enc.encode(f.texte), crc = crc32(data);
+    const loc = new DataView(new ArrayBuffer(30));
+    loc.setUint32(0, 0x04034b50, true); loc.setUint16(4, 20, true);
+    loc.setUint16(6, 0, true);          loc.setUint16(8, 0, true);
+    loc.setUint16(10, heureDos, true);  loc.setUint16(12, dateDos, true);
+    loc.setUint32(14, crc, true);       loc.setUint32(18, data.length, true);
+    loc.setUint32(22, data.length, true); loc.setUint16(26, nom.length, true);
+    loc.setUint16(28, 0, true);
+    morceaux.push(new Uint8Array(loc.buffer), nom, data);
+
+    const cen = new DataView(new ArrayBuffer(46));
+    cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 20, true); cen.setUint16(6, 20, true);
+    cen.setUint16(8, 0, true);          cen.setUint16(10, 0, true);
+    cen.setUint16(12, heureDos, true);  cen.setUint16(14, dateDos, true);
+    cen.setUint32(16, crc, true);       cen.setUint32(20, data.length, true);
+    cen.setUint32(24, data.length, true); cen.setUint16(28, nom.length, true);
+    cen.setUint16(30, 0, true); cen.setUint16(32, 0, true); cen.setUint16(34, 0, true);
+    cen.setUint16(36, 0, true); cen.setUint32(38, 0, true); cen.setUint32(42, decalage, true);
+    central.push(new Uint8Array(cen.buffer), nom);
+    decalage += 30 + nom.length + data.length;
+  });
+  const tailleCentral = central.reduce((s, m) => s + m.length, 0);
+  const fin = new DataView(new ArrayBuffer(22));
+  fin.setUint32(0, 0x06054b50, true); fin.setUint16(4, 0, true); fin.setUint16(6, 0, true);
+  fin.setUint16(8, fichiers.length, true); fin.setUint16(10, fichiers.length, true);
+  fin.setUint32(12, tailleCentral, true);  fin.setUint32(16, decalage, true);
+  fin.setUint16(20, 0, true);
+  const tout = morceaux.concat(central, [new Uint8Array(fin.buffer)]);
+  const sortie = new Uint8Array(tout.reduce((s, m) => s + m.length, 0));
+  let pos = 0;
+  tout.forEach(m => { sortie.set(m, pos); pos += m.length; });
+  return sortie;
+}
+
+/* --- 8b. Construction du classeur --- */
+function echXml(s){
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                  .replace(/"/g, '&quot;');
+}
+// Date JavaScript (ms) -> numéro de série Excel, en heure LOCALE de l'ordinateur
+function serieExcel(t){
+  const d = new Date(t);
+  return (t - d.getTimezoneOffset() * 60000) / 86400000 + 25569;
+}
+function dureeTexte(ms){
+  const s = Math.round(ms / 1000), h = Math.floor(s / 3600),
+        m = Math.floor((s % 3600) / 60), r = s % 60;
+  return (h ? h + ' h ' : '') + (h || m ? m + ' min ' : '') + r + ' s';
+}
+function lienCarte(lat, lng){
+  return 'https://www.google.com/maps?q=' + lat.toFixed(6) + ',' + lng.toFixed(6);
+}
+
+/* Styles (index cellXfs) : 0 normal, 1 en-tête vert, 2 date, 3 heure,
+   4 coordonnée 6 décimales, 5 mètres 0,0, 6 lien, 7 libellé gras,
+   8 titre, 9 date + heure, 10 texte gris italique                        */
+function construireXlsx(points, distTotale){
+  // Cellules : {v, s, type:'n'|'s'|'f', aff}
+  const cel = (ref, c) => {
+    if (c == null || c.v === '' || c.v == null) return '';
+    const st = c.s ? ' s="' + c.s + '"' : '';
+    if (c.type === 'f')
+      return '<c r="' + ref + '"' + st + ' t="str"><f>' + echXml(c.v) + '</f><v>' +
+             echXml(c.aff || '') + '</v></c>';
+    if (typeof c.v === 'number')
+      return '<c r="' + ref + '"' + st + '><v>' + c.v + '</v></c>';
+    return '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' +
+           echXml(c.v) + '</t></is></c>';
+  };
+  const ligne = (num, cellules, hauteur) =>
+    '<row r="' + num + '"' + (hauteur ? ' ht="' + hauteur + '" customHeight="1"' : '') + '>' +
+    cellules.map((c, i) => cel(String.fromCharCode(65 + i) + num, c)).join('') + '</row>';
+  const ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+             'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  const entete = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+
+  /* Feuille 1 : Positions */
+  const titres = ['N°', 'Date', 'Heure', 'Latitude', 'Longitude', 'Déplacement (m)',
+                  'Distance cumulée (m)', 'Origine des données', 'Carte'];
+  const lignes = [ligne(1, titres.map(t => ({v: t, s: 1})), 20)];
+  points.forEach((p, i) => {
+    const s = p.t ? serieExcel(p.t) : '';
+    lignes.push(ligne(i + 2, [
+      {v: i + 1},
+      {v: s === '' ? '' : Math.floor(s), s: 2},
+      {v: s === '' ? '' : s - Math.floor(s), s: 3},
+      {v: p.lat, s: 4},
+      {v: p.lng, s: 4},
+      {v: Math.round((p.delta || 0) * 10) / 10, s: 5},
+      {v: Math.round((p.cumul || 0) * 10) / 10, s: 5},
+      {v: p.source || ''},
+      {v: 'HYPERLINK("' + lienCarte(p.lat, p.lng) + '","Voir")', type: 'f', aff: 'Voir', s: 6}
+    ]));
+  });
+  const der = points.length + 1;
+  const largeurs = [7, 12, 10, 13, 13, 16, 20, 24, 9];
+  const feuille1 = entete + '<worksheet ' + ns + '>' +
+    '<sheetViews><sheetView workbookViewId="0" tabSelected="1">' +
+    '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>' +
+    '</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>' +
+    largeurs.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w +
+                           '" customWidth="1"/>').join('') +
+    '</cols><sheetData>' + lignes.join('') + '</sheetData>' +
+    '<autoFilter ref="A1:I' + der + '"/></worksheet>';
+
+  /* Feuille 2 : Résumé */
+  const avecT = points.filter(p => p.t);
+  const debut = avecT.length ? avecT[0].t : null;
+  const finT  = avecT.length ? avecT[avecT.length - 1].t : null;
+  const dernier = points[points.length - 1];
+  const resume = [
+    [{v: 'Canne intelligente — historique GPS', s: 8}],
+    [],
+    [{v: 'Exporté le', s: 7}, {v: serieExcel(Date.now()), s: 9}],
+    [{v: 'Nombre de positions', s: 7}, {v: points.length}],
+    [{v: 'Début du trajet', s: 7}, debut ? {v: serieExcel(debut), s: 9} : {v: 'inconnu'}],
+    [{v: 'Fin du trajet', s: 7}, finT ? {v: serieExcel(finT), s: 9} : {v: 'inconnu'}],
+    [{v: 'Durée', s: 7}, {v: debut && finT ? dureeTexte(finT - debut) : 'inconnue'}],
+    [{v: 'Distance totale (m)', s: 7}, {v: Math.round(distTotale * 10) / 10, s: 5}],
+    [{v: 'Dernière position', s: 7},
+     {v: dernier.lat.toFixed(6) + ', ' + dernier.lng.toFixed(6)}],
+    [{v: 'Voir sur la carte', s: 7},
+     {v: 'HYPERLINK("' + lienCarte(dernier.lat, dernier.lng) + '","Ouvrir dans Google Maps")',
+      type: 'f', aff: 'Ouvrir dans Google Maps', s: 6}],
+    [{v: 'Source des données', s: 7}, {v: 'Firebase Realtime Database — /gps_location'}],
+    [],
+    [{v: 'Distance calculée après lissage (moyenne glissante centrée sur 5 points) ' +
+         'pour ne pas compter les sauts dus au bruit du GPS.', s: 10}]
+  ];
+  const feuille2 = entete + '<worksheet ' + ns + '>' +
+    '<sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>' +
+    '<sheetFormatPr defaultRowHeight="15"/>' +
+    '<cols><col min="1" max="1" width="24" customWidth="1"/>' +
+    '<col min="2" max="2" width="34" customWidth="1"/></cols><sheetData>' +
+    resume.map((cs, i) => ligne(i + 1, cs, i === 0 ? 24 : 0)).join('') +
+    '</sheetData></worksheet>';
+
+  const styles = entete + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<numFmts count="5">' +
+    '<numFmt numFmtId="164" formatCode="dd/mm/yyyy"/>' +
+    '<numFmt numFmtId="165" formatCode="hh:mm:ss"/>' +
+    '<numFmt numFmtId="166" formatCode="0.000000"/>' +
+    '<numFmt numFmtId="167" formatCode="0.0"/>' +
+    '<numFmt numFmtId="168" formatCode="dd/mm/yyyy hh:mm:ss"/></numFmts>' +
+    '<fonts count="6">' +
+    '<font><sz val="11"/><name val="Calibri"/><family val="2"/></font>' +
+    '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>' +
+    '<font><b/><sz val="15"/><color rgb="FF14532D"/><name val="Calibri"/><family val="2"/></font>' +
+    '<font><u/><sz val="11"/><color rgb="FF0563C1"/><name val="Calibri"/><family val="2"/></font>' +
+    '<font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font>' +
+    '<font><i/><sz val="10"/><color rgb="FF6B7280"/><name val="Calibri"/><family val="2"/></font>' +
+    '</fonts>' +
+    '<fills count="3"><fill><patternFill patternType="none"/></fill>' +
+    '<fill><patternFill patternType="gray125"/></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FF16A34A"/><bgColor indexed="64"/>' +
+    '</patternFill></fill></fills>' +
+    '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    '<cellXfs count="11">' +
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+    '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1">' +
+      '<alignment horizontal="center" vertical="center"/></xf>' +
+    '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="167" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '<xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '<xf numFmtId="168" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1">' +
+      '<alignment horizontal="left"/></xf>' +
+    '<xf numFmtId="0" fontId="5" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '</cellXfs>' +
+    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+    '</styleSheet>';
+
+  const classeur = entete + '<workbook ' + ns + '><sheets>' +
+    '<sheet name="Positions" sheetId="1" r:id="rId1"/>' +
+    '<sheet name="Résumé" sheetId="2" r:id="rId2"/></sheets>' +
+    '<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">' +
+    'Positions!$A$1:$I$' + der + '</definedName></definedNames></workbook>';
+
+  const relClasseur = entete +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>' +
+    '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+    '</Relationships>';
+  const relRacine = entete +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+    '</Relationships>';
+  const types = entete +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+    '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+    '</Types>';
+
+  return zipStocke([
+    {nom: '[Content_Types].xml',        texte: types},
+    {nom: '_rels/.rels',                texte: relRacine},
+    {nom: 'xl/workbook.xml',            texte: classeur},
+    {nom: 'xl/_rels/workbook.xml.rels', texte: relClasseur},
+    {nom: 'xl/styles.xml',              texte: styles},
+    {nom: 'xl/worksheets/sheet1.xml',   texte: feuille1},
+    {nom: 'xl/worksheets/sheet2.xml',   texte: feuille2}
+  ]);
+}
+
+function telechargerExcel(){
+  if (!verifierHistorique()) return;
+  try {
+    telecharger(construireXlsx(historique, distanceTotale), nomFichier('xlsx'),
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  } catch(e){
+    alert('Création du fichier Excel impossible : ' + e.message);
+  }
+}
+
+function viderHistorique(){
+  if (!historique.length) return;
+  if (!confirm('Supprimer les ' + historique.length + ' positions de l\'historique ' +
+               '(y compris la copie mémorisée dans ce navigateur) ?\n\n' +
+               'Pense à le télécharger en Excel avant, si tu en as besoin.')) return;
+  historique = [];
+  idsVus.clear();
+  distanceTotale = 0;
+  try { localStorage.removeItem(CLE_HISTO); } catch(e){}
+  if (map){ trace.setLatLngs([]); marker.setOpacity(0);
+            cercle.setStyle({opacity:0, fillOpacity:0}); }
+  majListe();
+  afficherBandeau({lat: dernierePosition ? dernierePosition.lat : 0,
+                   lng: dernierePosition ? dernierePosition.lng : 0, source: '—'});
+  setEtat('Historique vidé — en attente de nouvelles positions', 'wait');
+}
+
+/* ---------- 10. Lecture temps réel dans Firebase ---------- */
+/* Renvoie {points:[…], source:'…'} quelle que soit la façon dont la canne écrit */
+function extrairePositions(data){
+  if (!data || typeof data !== 'object') return { points: [], source: null };
+
+  // Cas A : objet unique { latitude, longitude } (méthode PUT)
+  if (data.latitude != null && data.longitude != null){
+    const lat = parseFloat(data.latitude), lng = parseFloat(data.longitude);
+    if (!isFinite(lat) || !isFinite(lng)) return { points: [], source: null };
+    const t   = horodatage(data, null);
+    const id  = 'put:' + lat.toFixed(6) + ',' + lng.toFixed(6) + ':' + (t || 'sans-date');
+    return { points: [{ id, t, lat, lng, source: 'objet unique (PUT)' }],
+             source: 'objet unique (PUT)' };
+  }
+
+  // Cas B : liste horodatée (méthode POST) -> une entrée par clé
+  const cles = Object.keys(data)
+    .filter(k => data[k] && typeof data[k] === 'object' && data[k].latitude != null);
+  if (!cles.length) return { points: [], source: null };
+  cles.sort();                                        // les clés push sont chronologiques
+
+  const points = cles.map(cle => {
+    const d = data[cle];
+    const lat = parseFloat(d.latitude), lng = parseFloat(d.longitude);
+    if (!isFinite(lat) || !isFinite(lng)) return null;
+    return { id: 'fb:' + cle, t: horodatage(d, cle), lat, lng,
+             source: 'liste horodatée (POST)' };
+  }).filter(Boolean);
+
+  return { points, source: `liste horodatée (${points.length} entrées lues)` };
+}
+
+const dernieresCles = new Set();      // clés déjà annoncées (compteur de « mises à jour »)
+
+if (typeof firebase !== 'undefined'){
+  try {
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    database.ref('.info/connected').on('value', s => {
+      if (s.val() === true){
+        setEtat(dernierePosition
+          ? 'Connecté à Firebase — position à jour'
+          : 'Connecté à Firebase — en attente de la canne…', 'wait');
+      } else {
+        setEtat('Déconnecté de Firebase (Internet ?)', 'ko');
+      }
+    }, err => {
+      console.warn('[Firebase] .info/connected :', err && err.message);
+    });
+
+    // limitToLast(500) : de quoi constituer un vrai historique (et non 50 points)
+    database.ref('gps_location').limitToLast(LIMITE_FB).on('value', snapshot => {
+      const data = snapshot.val();
+      console.log('[Firebase] gps_location =', data);
+
+      const res = extrairePositions(data);
+
+      if (res.points.length){
+        // Les mises à jour « reçues » = points réellement nouveaux
+        let nouveaux = 0;
+        res.points.forEach(p => { if (!dernieresCles.has(p.id)){ dernieresCles.add(p.id); nouveaux++; } });
+        nbMaj += Math.max(nouveaux, 0);
+
+        ajouterPoints(res.points);
+
+        const dernier = historique[historique.length - 1];
+        derniereMajMs = Date.now();
+        afficherPosition(dernier, nouveaux > 0);
+        setDiag('Lecture Firebase OK — ' + res.source +
+                (nouveaux ? ' · ' + nouveaux + ' nouveau(x) point(s)' : ' · aucun nouveau point'), 'ok');
+      } else if (!historique.length){
+        setEtat('Lecture OK, mais /gps_location est vide (la canne n\'a rien envoyé)', 'ko');
+        elFormat.textContent = 'Format reçu : —';
+        setDiag('La base répond et autorise la lecture, mais aucune donnée n\'est arrivée. ' +
+                'Le problème est côté canne (GPS, SIM, APN, écriture HTTP).', 'wait');
+      }
+    }, err => {
+      console.error(err);
+      const msg = ((err && err.code) ? err.code + ' : ' : '') + (err && err.message ? err.message : err);
+      if (/permission/i.test(msg)){
+        setEtat('Accès refusé par les règles Firebase (PERMISSION_DENIED)', 'ko');
+        setDiag('Les règles de sécurité de la base refusent la lecture anonyme. ' +
+                'La page échouerait de la même façon même si la canne avait envoyé 1000 positions — ' +
+                'et l\'historique restera vide. Corrige les règles dans la console Firebase → ' +
+                'Realtime Database → Règles.', 'ko');
+        elVide.innerHTML = '<b>Accès refusé par les règles Firebase.</b> Aucune position ne peut être ' +
+                           'reçue : autorise la lecture de /gps_location dans la console Firebase → ' +
+                           'Realtime Database → Règles, puis publie les règles.';
+        elVide.style.display = 'block';
+      } else {
+        setEtat('Erreur Firebase : ' + msg, 'ko');
+        setDiag('Erreur renvoyée par Firebase : <code>' + msg.replace(/[<>&]/g,'') + '</code>', 'ko');
+      }
+    });
+
+  } catch (e){
+    console.error(e);
+    setEtat('Firebase non initialisé : ' + e.message, 'ko');
+    setDiag('Initialisation impossible : <code>' + e.message + '</code>', 'ko');
+  }
+} else {
+  setEtat('Bibliothèque Firebase non chargée (voir le message central)', 'ko');
+  setDiag('Le SDK Firebase n\'a pas été chargé : CDN bloqué ou aperçu sans réseau. ' +
+          'Vérifie Internet, puis ouvre le fichier directement dans le navigateur et recharge la page.', 'ko');
+}
+
+/* ---------- 11. Démarrage ---------- */
+chargerHistorique();     // historique mémorisé (utile hors ligne / après rechargement)
+restaurerMemoire();      // cadrage : dernière position connue, sinon Diego Suarez
+majListe();              // état initial de la liste
+
+/* ---------- 12. Barre de navigation : panneaux déroulants ---------- */
+const PANNEAUX = ['pPosition', 'pHistorique', 'pCarte'];
+
+function basculerPanneau(idBouton, idPanneau){
+  const b = document.getElementById(idBouton);
+  const p = document.getElementById(idPanneau);
+  if (!b || !p) return;
+  const etaitOuvert = !p.hasAttribute('hidden');
+  fermerPanneaux();                       // un seul panneau ouvert à la fois
+  if (!etaitOuvert){
+    p.removeAttribute('hidden');
+    b.classList.add('actif');
+    b.setAttribute('aria-expanded', 'true');
+    // la carte change de taille quand la fenêtre est étroite : on recalcule
+    if (map) setTimeout(() => map.invalidateSize(), 50);
+  }
+}
+
+function fermerPanneaux(){
+  PANNEAUX.forEach(id => {
+    const p = document.getElementById(id);
+    if (p) p.setAttribute('hidden', '');
+  });
+  document.querySelectorAll('#menu .nav-item').forEach(b => {
+    b.classList.remove('actif');
+    b.setAttribute('aria-expanded', 'false');
+  });
+}
+
+/* Clic ailleurs sur la page ou touche Échap : on referme */
+document.addEventListener('click', e => {
+  if (!e.target.closest('#menu .nav-item') && !e.target.closest('.nav-panneau')) fermerPanneaux();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fermerPanneaux(); });
+
+/* ---------- 13. Outils de carte (panneau « Carte ») ---------- */
+function basculerTrace(){
+  if (!map || !trace) return;
+  if (map.hasLayer(trace)) map.removeLayer(trace); else trace.addTo(map);
+}
+function basculerCercle(){
+  if (!map || !cercle) return;
+  if (map.hasLayer(cercle)) map.removeLayer(cercle); else cercle.addTo(map);
+}
+function ajusterVue(){
+  if (!map || !trace) return;
+  const pts = historique.map(p => [p.lat, p.lng]);
+  if (pts.length < 2){ alert('Il faut au moins 2 positions pour ajuster la vue au trajet.'); return; }
+  map.fitBounds(pts, {paddingTopLeft:[40, parseInt(getComputedStyle(document.documentElement).getPropertyValue('--nav'), 10) + 40], paddingBottomRight:[40,40], maxZoom:18});
+}
+
+/* ---------- 14. Redimensionnement ---------- */
+window.addEventListener('resize', () => { if (map) map.invalidateSize(); });
+setTimeout(() => { if (map) map.invalidateSize(); }, 300);   // sécurité après le premier rendu
+
 </script>
 </body>
 </html>
