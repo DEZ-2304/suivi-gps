@@ -269,7 +269,11 @@
 <script>
 
 /* =====================================================================
-   PAGE DE SUIVI — v4   100 % données réelles
+   PAGE DE SUIVI — v4.1   100 % données réelles
+   Correctifs v4.1 : (a) attrape-erreur affiché dans la barre d'état,
+   (b) icône du pin en URL absolue (plus de pin invisible),
+   (c) démarrage protégé par try/catch + PANNEAUX déclaré avant,
+       pour qu'un pépin au démarrage ne puisse PLUS tuer les boutons.
    Nouveautés v3 (par rapport à la v2) :
      1) une BARRE D'ÉTAT compacte remplace le bloc de lignes du panneau
         (les détails restent disponibles dans « Détails techniques ») ;
@@ -284,6 +288,18 @@
    ===================================================================== */
 
 /* ---------- 0. Constantes ---------- */
+/* v4.1 : attrape-erreur — toute erreur JS s'affiche dans la barre d'état,
+   la page devient son propre témoin de panne (plus besoin de F12). */
+window.addEventListener('error', function(e){
+  try {
+    var d = document.getElementById('etat');
+    if (d){
+      d.textContent = 'ERREUR JS : ' + (e.message || 'inconnue') + ' (ligne ' + (e.lineno || '?') + ')';
+      d.className = 'ko';
+    }
+  } catch(_){}
+});
+
 const POS_DEFAUT  = [-12.2780, 49.2914];     // vue de départ : Diego Suarez (Antsiranana)
 const ZOOM_DEFAUT = 13;
 const CLE_MEMOIRE = 'canne_derniere_position';
@@ -315,7 +331,15 @@ if (typeof L === 'undefined') {
   });
   fondActuel = fondGoogle.addTo(map);
 
-  marker = L.marker(POS_DEFAUT).addTo(map).bindPopup('Position de la canne (temps réel)');
+  /* v4.1 : icône en URLs ABSOLUES — le pin rouge est garanti visible,
+     quelle que soit la façon dont Leaflet devine (ou rate) son chemin d'images */
+  const ICONE_CANNE = L.icon({
+    iconUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    iconRetinaUrl:'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    shadowUrl:   'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    iconSize:[25,41], iconAnchor:[12,41], shadowSize:[41,41], popupAnchor:[1,-34]
+  });
+  marker = L.marker(POS_DEFAUT, {icon: ICONE_CANNE}).addTo(map).bindPopup('Position de la canne (temps réel)');
   cercle = L.circle(POS_DEFAUT, {radius:25, color:'#d00', fillColor:'#f33', fillOpacity:.25}).addTo(map);
   trace  = L.polyline([], {color:'#d00', weight:3, opacity:.6}).addTo(map);
   marker.setOpacity(0);
@@ -1164,12 +1188,15 @@ if (typeof firebase !== 'undefined'){
 }
 
 /* ---------- 11. Démarrage ---------- */
-chargerHistorique();     // historique mémorisé (utile hors ligne / après rechargement)
-restaurerMemoire();      // cadrage : dernière position connue, sinon Diego Suarez
-majListe();              // état initial de la liste
+/* v4.1 : PANNEAUX déclaré AVANT les appels de démarrage, et chaque appel
+   est protégé : plus jamais un pépin ici ne peut tuer les boutons. */
+const PANNEAUX = ['pPosition', 'pHistorique', 'pCarte'];
+try { chargerHistorique(); } catch(e){ console.error('v4.1 chargerHistorique :', e); }
+try { restaurerMemoire();  } catch(e){ console.error('v4.1 restaurerMemoire :', e); }
+try { majListe();          } catch(e){ console.error('v4.1 majListe :', e); }
 
 /* ---------- 12. Barre de navigation : panneaux déroulants ---------- */
-const PANNEAUX = ['pPosition', 'pHistorique', 'pCarte'];
+/* (PANNEAUX est déclaré plus haut, section 11 — v4.1) */
 
 function basculerPanneau(idBouton, idPanneau){
   const b = document.getElementById(idBouton);
