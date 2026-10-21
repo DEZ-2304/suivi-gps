@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Suivi GPS temps réel — Canne intelligente (v4.6)</title>
+<title>Suivi GPS temps réel — Canne intelligente (v5.0)</title>
 
 <!-- CSS Leaflet (URL complète) -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -128,9 +128,6 @@
   #liste li.ecarte { opacity:.75; }
   #liste li.ecarte .c { text-decoration:line-through; }
   #liste li.ecarte .d { color:#c0392b; }
-  #videListe { display:none; padding:11px; font-size:12px; color:#3b444b; font-style:italic;
-               border:1px dashed #a6afb6; border-radius:10px; background:#f7f9fa; }
-  #videListe b { color:#c0392b; }
 
   #boutonsExport { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:8px; }
   .btn { margin-top:7px; width:100%; padding:8px 10px; cursor:pointer; font-family:inherit;
@@ -145,13 +142,6 @@
   .ligne { margin:3px 0; font-size:12px; color:#111; }
   #vue { margin-top:8px; }
   .seuil { color:#a3600a; font-weight:bold; }
-  small.aide { color:#454f57; font-size:11px; display:block; margin-top:6px; }
-
-  /* v4.5 : rappel de l'effacement + bouton pour revenir en arrière */
-  #infoEfface { display:none; margin-top:8px; padding:8px 10px; border-radius:9px;
-                background:#fff; border:1px solid rgba(0,0,0,.16);
-                font-size:11.5px; line-height:1.45; color:#111; }
-  #infoEfface b { color:#000; }
 
   details { margin-top:9px; font-size:12px; border-top:1px solid rgba(0,0,0,.16); padding-top:8px; }
   details summary { cursor:pointer; font-weight:bold; color:#0b5fbf; }
@@ -220,25 +210,22 @@
         <div id="barreEtat"><span id="etat" class="wait">Initialisation…</span></div>
         <div id="barreBadges">
           <span class="badge" id="badgePoints">0 position</span>
-          <span class="badge" id="badgeAge">âge : —</span>
+          <span class="badge" id="badgeAge">durée de donnée : —</span>
           <span class="badge" id="badgeDist">0 m</span>
           <span class="badge" id="badgeMvt">état : —</span>
           <span class="badge" id="badgeEcart">0 écartée</span>
         </div>
-        <div class="ligne wait" id="vue">Vue de la carte : vue de départ (Diego Suarez) — aucune position reçue</div>
 
         <details>
-          <summary>Détails techniques (v4.6)</summary>
+          <summary>Détails du position</summary>
           <div class="ligne" id="coords">Position : —</div>
-          <div class="ligne" id="maj">Dernière MAJ : —</div>
-          <div class="ligne" id="age">Âge de la donnée : —</div>
+          <div class="ligne" id="maj">Heure de la dernière mise à jour : —</div>
+          <div class="ligne" id="age">Durée de donnée : —</div>
           <div class="ligne" id="format">Format reçu : —</div>
           <div class="ligne" id="nb">Mises à jour reçues : 0</div>
           <div class="ligne" id="dist">Distance parcourue : 0 m</div>
         </details>
 
-        <button class="btn" onclick="recentrer()">🎯 Recentrer sur la canne</button>
-        <button class="btn" onclick="vueDepart()">🏠 Vue de départ (Diego Suarez)</button>
       </section>
     </div>
 
@@ -259,11 +246,6 @@
           </span>
         </div>
         <ul id="liste"></ul>
-        <div id="infoEfface"></div>
-        <div id="videListe">Aucune position enregistrée. Vérifie l'état dans «&nbsp;Position&nbsp;» :
-          si l'accès est refusé, autorise la lecture de <code>/gps_location</code> dans les règles Firebase.
-          L'historique se remplira dès que la canne enverra des positions.</div>
-        <small class="aide">Clique sur une ligne pour centrer la carte sur ce point.</small>
         <button class="btn vert" id="boutonExcel" onclick="telechargerExcel()"
                 title="Télécharger l'historique dans un classeur Excel (.xlsx)">📊 Télécharger l'historique (Excel)</button>
         <button class="btn" onclick="viderHistorique()">🗑️ Vider l'historique</button>
@@ -311,7 +293,48 @@
 <script>
 
 /* =====================================================================
-   PAGE DE SUIVI — v4.6   100 % données réelles
+   PAGE DE SUIVI — v5.0   100 % données réelles
+   ---------------------------------------------------------------------
+   NOUVEAUTÉS v5.0 — libellés du panneau Position + distance conforme :
+   (a) Panneau Position (wording utilisateur) : « durée de donnée »,
+       « Heure de la dernière mise à jour », « Détails du position » —
+       appliqués aussi aux textes écrits par le JavaScript.
+   (b) UNE SEULE distance partout : le total du panneau Position (badge et
+       ligne « Distance parcourue »), l'en-tête de l'historique (« … —
+       distance : X »), la colonne « +m » des lignes et l'infobulle
+       « Distance cumulée » proviennent tous du MÊME calcul (lissage + seuil
+       d'ancre). La somme des « +m » de l'historique = total de « Position ».
+   (c) Canne immobile : la distance ne retombe plus à 0 — elle se FIGE à sa
+       valeur au moment de l'arrêt (comme le tracé). Le bruit GPS reçu pendant
+       l'arrêt n'est toujours pas compté.
+   ---------------------------------------------------------------------
+   NOUVEAUTÉS v4.9 — panneau « Historique » épuré + pin bleu (demande utilisateur) :
+   (a) Suppression du message affiché quand la liste est vide (« Aucune
+       position enregistrée… » / « Historique effacé… ») et de la ligne
+       d'aide « Clique sur une ligne pour centrer la carte sur ce point ».
+       En cas de problème d'accès Firebase, l'information reste dans le
+       panneau « Position » (barre d'état + diagnostic).
+   (b) Le pin de la position redevient BLEU (même grande forme SVG « goutte »,
+       aucune image externe) : corps #2b82f6, contour #1256ad, point #0c4a9e.
+       Le cercle rouge autour (zone de précision) est inchangé.
+   ---------------------------------------------------------------------
+   NOUVEAUTÉS v4.8 — panneaux allégés (demande utilisateur) :
+   (a) Panneau « Position » : suppression de la ligne « Vue de la carte : … »
+       et des boutons « 🎯 Recentrer sur la canne » / « 🏠 Vue de départ ».
+       (Le bouton « 🎯 Recentrer » de la barre du haut, lui, reste.)
+   (b) Panneau « Historique » : suppression du bandeau d'explication
+       « 🗑️ Historique effacé le … ». Tout le reste est inchangé : le bouton
+       « ↩️ Réafficher l'historique reçu » / « 📚 Afficher l'historique
+       enregistré » reste disponible en bas du panneau.
+   ---------------------------------------------------------------------
+   NOUVEAUTÉS v4.7 :
+   (a) POSITION EN DIRECT : gros PIN ROUGE (dessiné en SVG dans la page, aucun
+       fichier à télécharger) au lieu du petit pin bleu de Leaflet. Il apparaît
+       dès qu'une position est reçue.
+   (b) À L'OUVERTURE : la carte se place sur la DERNIÈRE POSITION ENREGISTRÉE
+       de la canne, marquée par le cercle gris pointillé « pas du direct » —
+       même avec le compteur à 0 (démarrage à zéro). Le pin rouge, lui, reste
+       réservé aux positions en direct.
    ---------------------------------------------------------------------
    NOUVEAUTÉS v4.6 :
    (a) DÉMARRAGE À ZÉRO : à l'ouverture, le compteur et la liste partent de 0
@@ -447,6 +470,13 @@ const MARGE_VIT    = 3.0;   // m : tolérance de bruit ajoutée à la distance m
    (true = comportement demandé ; false = ancien comportement : tout l'historique
    enregistré s'affichait dès le chargement.)                                  */
 const DEMARRER_A_ZERO = true;
+/* v4.7 : même en démarrage à zéro (compteur à 0), la carte se place sur la
+   DERNIÈRE POSITION ENREGISTRÉE de la canne, marquée par le cercle gris
+   pointillé « dernière position connue — pas du direct ». Ainsi la page
+   s'ouvre là où est la canne au lieu de la vue de départ de Diego Suarez.
+   false = la carte reste sur la vue de départ tant qu'aucune position
+   nouvelle n'est reçue.                                                      */
+const AFFICHER_DERNIERE_CONNUE = true;
 
 const DT_INCONNU_S = 300;   // s : délai supposé quand une trame n'a pas d'horodatage
                             //     (300 s × 3 m/s = 900 m : volontairement large, pour
@@ -491,9 +521,16 @@ function estAvantCoupure(p){
   if (!coupure) return false;
   const cle = cleFirebaseDe(p);
   if (coupure.cle && cle && cle.length === coupure.cle.length) return cle <= coupure.cle;
-  if (isFinite(p.t) && isFinite(coupure.t)) return p.t <= coupure.t;
-  return false;                       // ni clé ni date : on garde (plutôt trop que rien)
+  if (dateValide(p.t) && dateValide(coupure.t)) return p.t <= coupure.t;
+  return false;                       // ni clé ni date : on AFFICHE (plutôt trop que rien)
 }
+
+/* v4.7 : test de date STRICT.
+   ⚠️ Piège JavaScript : isFinite(null) renvoie TRUE (Number(null) === 0), et
+   isFinite('') aussi. Une trame SANS horodatage se faisait donc comparer à
+   l'an 1970 et était classée « ancienne » — le pin rouge ne s'affichait
+   JAMAIS pour une canne écrivant sans timestamp. On exige donc un vrai nombre. */
+function dateValide(t){ return typeof t === 'number' && isFinite(t); }
 
 /* v4.6 : le point est-il antérieur (ou égal) à la frontière de démarrage ? */
 function estAvantSeuil(p){
@@ -501,7 +538,10 @@ function estAvantSeuil(p){
   const cle = cleFirebaseDe(p);
   if (seuilDemarrage.cle && cle && cle.length === seuilDemarrage.cle.length)
     return cle <= seuilDemarrage.cle;
-  if (isFinite(p.t) && isFinite(seuilDemarrage.t)) return p.t <= seuilDemarrage.t;
+  if (dateValide(p.t) && dateValide(seuilDemarrage.t)) return p.t <= seuilDemarrage.t;
+  /* Ni clé comparable ni date : impossible de prouver que la position est
+     ancienne. On l'affiche — mieux vaut un point de trop qu'un pin qui
+     n'apparaît jamais. */
   return false;
 }
 
@@ -519,30 +559,13 @@ function lireCoupure(){
   majInfoEfface();
 }
 
-/* Texte d'origine du bloc « liste vide », conservé pour pouvoir le restaurer */
-const TEXTE_VIDE_DEFAUT = (function(){
-  const e = document.getElementById('videListe');
-  return e ? e.innerHTML : '';
-})();
-
 function majInfoEfface(){
-  const info = document.getElementById('infoEfface');
   const btn  = document.getElementById('btnReafficher');
-  const vide = document.getElementById('videListe');
-  if (!info || !btn) return;
-
-  /* --- Bandeau d'explication (uniquement après un effacement) --- */
-  if (coupure){
-    info.style.display = 'block';
-    info.innerHTML = '🗑️ <b>Historique effacé</b> le ' +
-      (coupure.t ? new Date(coupure.t).toLocaleString() : '—') +
-      '.<br>Les positions antérieures ne seront plus affichées, <b>même après actualisation</b>. ' +
-      'Les nouvelles positions reçues s\'affichent normalement.<br>' +
-      '<span style="color:#5b6670">Les données restent sur le serveur Firebase ' +
-      '(la page n\'a que le droit de lecture) : c\'est l\'affichage qui est filtré.</span>';
-  } else {
-    info.style.display = 'none';
-  }
+  if (!btn) return;
+  /* v4.9 : le message « liste vide » (Aucune position enregistrée… / Historique
+     effacé…) a été RETIRÉ lui aussi — le panneau reste simplement vide.
+     Les infos utiles restent dans le panneau « Position » (barre d'état +
+     diagnostic) et ce bouton. */
 
   /* --- Bouton : annuler un effacement, ou afficher l'historique enregistré --- */
   if (coupure){
@@ -553,24 +576,6 @@ function majInfoEfface(){
     btn.style.display = 'block';
   } else {
     btn.style.display = 'none';
-  }
-
-  /* --- Message affiché dans la liste vide --- */
-  if (!vide) return;
-  if (coupure){
-    /* Liste vide parce qu'elle a été effacée — pas parce que la canne n'envoie rien. */
-    vide.innerHTML = 'Historique effacé : aucune position depuis. ' +
-                     'Les prochaines positions envoyées par la canne s\'afficheront ici — ' +
-                     'ou cliquez sur « ↩️ Réafficher l\'historique reçu » pour tout revoir.';
-  } else if (DEMARRER_A_ZERO && enregistreDispo){
-    /* v4.6 : démarrage à zéro, l'historique existe mais reste masqué. */
-    vide.innerHTML = 'Le compteur démarre à zéro à chaque ouverture de la page. ' +
-                     '<b>' + enregistreDispo + ' position(s) déjà enregistrée(s)</b> ne sont pas ' +
-                     'affichées ; elles réapparaissent avec le bouton ' +
-                     '« 📚 Afficher l\'historique enregistré » ci-dessous. ' +
-                     'Les prochaines positions de la canne s\'ajouteront automatiquement.';
-  } else {
-    vide.innerHTML = TEXTE_VIDE_DEFAUT;   // message d'aide d'origine
   }
 }
 const LIMITE_FB   = 500;                     // nombre de dernières écritures lues dans Firebase
@@ -595,14 +600,32 @@ if (typeof L === 'undefined') {
   });
   fondActuel = fondGoogle.addTo(map);
 
-  /* v4.1 : icône en URLs ABSOLUES — le pin rouge est garanti visible,
-     quelle que soit la façon dont Leaflet devine (ou rate) son chemin d'images */
-  const ICONE_CANNE = L.icon({
-    iconUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-    iconRetinaUrl:'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-    shadowUrl:   'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-    iconSize:[25,41], iconAnchor:[12,41], shadowSize:[41,41], popupAnchor:[1,-34]
-  });
+  /* GROS PIN de la position, dessiné en SVG directement dans la page (data
+     URI) : AUCUN fichier externe à télécharger — le pin s'affiche même si
+     Internet est lent ou si le CDN des images est bloqué. Même forme qu'un
+     pin de carte classique.
+     v4.9 : le pin est BLEU (demande utilisateur). Le cercle rouge autour
+     (zone de précision) reste inchangé.
+     PIN_BLEU = false ramène l'ancien petit pin bleu de Leaflet (image externe). */
+  const PIN_BLEU = true;
+  const SVG_PIN_BLEU =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="38" height="60" viewBox="0 0 38 60">' +
+      '<ellipse cx="20" cy="56.5" rx="7.5" ry="2.8" fill="#000" opacity="0.22"/>' +
+      '<path d="M19 1C9.6 1 2 8.6 2 18c0 11.6 17 41.5 17 41.5S36 29.6 36 18C36 8.6 28.4 1 19 1z" ' +
+            'fill="#2b82f6" stroke="#1256ad" stroke-width="1.2"/>' +
+      '<circle cx="19" cy="18" r="6.4" fill="#0c4a9e"/>' +
+    '</svg>';
+  const ICONE_CANNE = PIN_BLEU
+    ? L.icon({
+        iconUrl: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(SVG_PIN_BLEU),
+        iconSize:[38,60], iconAnchor:[19,59], popupAnchor:[0,-52]
+      })
+    : L.icon({
+        iconUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        iconRetinaUrl:'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+        shadowUrl:   'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+        iconSize:[25,41], iconAnchor:[12,41], shadowSize:[41,41], popupAnchor:[1,-34]
+      });
   marker = L.marker(POS_DEFAUT, {icon: ICONE_CANNE}).addTo(map).bindPopup('Position de la canne (temps réel)');
   cercle = L.circle(POS_DEFAUT, {radius:25, color:'#d00', fillColor:'#f33', fillOpacity:.25}).addTo(map);
   trace  = L.polyline([], {color:'#d00', weight:3, opacity:.6}).addTo(map);
@@ -615,9 +638,10 @@ if (typeof L === 'undefined') {
     opacity: 0,
     icon: L.divIcon({
       className: '',
-      html: '<div style="width:16px;height:16px;box-sizing:border-box;border-radius:50%;' +
-            'border:3px dashed #666;background:rgba(255,255,255,.9)"></div>',
-      iconSize: [16,16], iconAnchor: [8,8]
+      html: '<div style="width:22px;height:22px;box-sizing:border-box;border-radius:50%;' +
+            'border:3px dashed #555;background:rgba(255,255,255,.92);' +
+            'box-shadow:0 2px 6px rgba(0,0,0,.35)"></div>',
+      iconSize: [22,22], iconAnchor: [11,11]
     })
   }).addTo(map).bindPopup('Dernière position connue (mémorisée)');
   memoire.setOpacity(0);
@@ -657,9 +681,7 @@ const elAge    = document.getElementById('age');
 const elFormat = document.getElementById('format');
 const elNb     = document.getElementById('nb');
 const elDist   = document.getElementById('dist');
-const elVue    = document.getElementById('vue');
 const elListe  = document.getElementById('liste');
-const elVide   = document.getElementById('videListe');
 const elCompte = document.getElementById('compteHisto');
 const elBadges = {
   points:   document.getElementById('badgePoints'),
@@ -714,6 +736,12 @@ function tempsDepuisCle(cle){
     if (v === -1) return null;
     t = t * 64 + v;
   }
+  /* v4.7 : contrôle de vraisemblance. Une clé qui n'est PAS une vraie clé
+     « push » de Firebase (par exemple « Nouveau », « 1 », « esp32 ») donne un
+     décodage absurde : on renvoie null au lieu de faire croire à une date de
+     1970 ou de 2024 — ce qui faisait disparaître les points. Les clés push
+     existent depuis 2015 et ne peuvent pas être dans le futur. */
+  if (t < 1420070400000 || t > Date.now() + 86400000) return null;
   return t;                                   // millisecondes epoch
 }
 
@@ -867,7 +895,7 @@ function analyserMouvement(){
   hor.forEach(p => { etal = Math.max(etal, haversine(cLat, cLng, p.lat, p.lng)); });
 
   const net   = haversine(hor[0].lat, hor[0].lng, dernier.lat, dernier.lng);
-  const duree = (isFinite(hor[0].t) && isFinite(dernier.t)) ? (dernier.t - hor[0].t) / 1000 : 0;
+  const duree = (dateValide(hor[0].t) && dateValide(dernier.t)) ? (dernier.t - hor[0].t) / 1000 : 0;
 
   res.rayon = etal; res.duree = duree; res.net = net; res.nbPoints = hor.length;
   res.immobile = (duree >= DUREE_IMMO) && (net <= DEPLACEMENT_LONG);
@@ -895,21 +923,32 @@ function calculerDistances(){
   /* v4.3 : les points aberrants sont exclus du lissage ET du calcul de
      distance — sinon leurs voisins « sains » sont contaminés, car la moyenne
      glissante centrée mélange chaque point avec ses deux voisins. */
-  const retenus = historique.filter(p => !p.ecarte);
+  let retenus = historique.filter(p => !p.ecarte);
   const mouve   = analyserMouvement();
 
+  // Réinitialisation des champs de chaque point (avant tout retour anticipé)
+  for (const p of historique){ p.compte = false; p._pas = 0; p.cumul = 0; p.delta = 0; }
+
+  /* v5.0 — distance « conforme » : canne immobile → la distance se FIGE
+     (même gel que le tracé) au lieu de retomber à 0 alors que le trajet
+     d'avant existe toujours. Gel = distance calculée jusqu'à l'ENTRÉE dans la
+     zone d'arrêt (rayon 30 m, comme le tracé) ; les quelques dizaines de
+     mètres d'approche sont rattrapées automatiquement dès que la marche
+     reprend. Le bruit reçu pendant l'arrêt reste, lui, ignoré — et le total
+     de « Position » est à tout moment celui de l'historique. */
+  if (mouve.immobile && filtreActif && dateValide(mouve.depuis))
+    /* <= : le PREMIER point de la zone d'arrêt compte encore (c'est la fin
+       réelle de la marche) ; seul le bruit d'APRÈS l'arrêt est exclu. */
+    retenus = retenus.filter(p => !dateValide(p.t) || p.t <= mouve.depuis);
+
   const n = retenus.length;
-  if (!n){ distanceTotale = 0; return 0; }
+  if (n < 2){ distanceTotale = 0; return 0; }
   const lisse = moyenneGlissante(retenus, LISSAGE_DIST);
 
-  // Réinitialisation des champs de chaque point
-  for (const p of historique){ p.compte = false; p._pas = 0; p.cumul = 0; p.delta = 0; }
   for (let i = 0; i < n; i++){
     const p = retenus[i];
     p.delta = (i > 0) ? haversine(retenus[i-1].lat, retenus[i-1].lng, p.lat, p.lng) : 0;
   }
-  if (n === 1) return 0;
-  if (mouve.immobile) return 0;      // à l'arrêt : on ne compte AUCUN mètre (bruit pur)
 
   /* Décision ET accumulation sur les positions LISSÉES : le bruit du GPS
      (±2 m sur un NEO-6M) est gommé par la moyenne glissante, sinon chaque
@@ -1006,6 +1045,16 @@ function ajouterPoints(points){
   return n;
 }
 
+/* v4.7 : dernière position RETENUE par le filtre anti-aberrant.
+   Le pin rouge suit cette position, pas la dernière trame brute : un saut
+   impossible de 300 m ne doit pas faire bondir le repère hors de la zone.
+   L'écart reste visible (badge « écartée », liste, export). */
+function dernierPointSuivi(){
+  for (let i = historique.length - 1; i >= 0; i--)
+    if (!historique[i].ecarte) return historique[i];
+  return historique[historique.length - 1] || null;
+}
+
 /* ---------- v4.3 : état de mouvement (badge + barre d'état) ---------- */
 let etaitImmobile = null;
 function majMouvement(){
@@ -1065,7 +1114,8 @@ function majListe(){
   const nbEc = historique.filter(p => p.ecarte).length;
   const nbSuivis = nb - nbEc;
 
-  elCompte.textContent = nb + ' position' + (nb > 1 ? 's' : '');
+  elCompte.textContent = nb + ' position' + (nb > 1 ? 's' : '') +
+                         ' — distance : ' + texteDistance(distanceTotale);
   elBadges.points.textContent = nbSuivis + ' suivie' + (nbSuivis > 1 ? 's' : '') +
                                 (nbEc ? ' / ' + nb + ' reçue' + (nb > 1 ? 's' : '') : '');
   if (elNavCompte) elNavCompte.textContent = nbSuivis;
@@ -1080,11 +1130,7 @@ function majListe(){
   if (elBadges.laboFiltre) elBadges.laboFiltre.style.display = nbEc ? 'flex' : 'none';
 
   elListe.innerHTML = '';
-  if (!nb){
-    elVide.style.display = 'block';
-    return;
-  }
-  elVide.style.display = 'none';
+  if (!nb) return;
 
   const frag = document.createDocumentFragment();
   const debut = Math.max(0, nb - MAX_AFFICHES);
@@ -1110,7 +1156,7 @@ function majListe(){
       '<span class="n">' + (i+1) + '</span>' +
       '<span class="h">' + heureCourte(p.t) + '</span>' +
       '<span class="c">' + p.lat.toFixed(5) + ', ' + p.lng.toFixed(5) + '</span>' +
-      '<span class="d">' + (p.delta >= SEUIL_AFFICH ? '+' + p.delta.toFixed(0) + ' m' : '·') + '</span>';
+      '<span class="d">' + (p._pas >= SEUIL_AFFICH ? '+' + p._pas.toFixed(0) + ' m' : '·') + '</span>';
     frag.appendChild(li);
   }
   if (debut > 0){
@@ -1177,23 +1223,16 @@ function chargerHistorique(){
 function restaurerMemoire(){
   if (!map) return;
   if (coupure){        // v4.5 : l'ancienne « dernière position connue » a été effacée
-    elVue.textContent = 'Vue de la carte : historique effacé — en attente de nouvelles positions';
-    elVue.className   = 'ligne wait';
     return;
   }
   let memo = null;
   try { memo = JSON.parse(localStorage.getItem(CLE_MEMOIRE) || 'null'); } catch(e){}
   if (!memo || !isFinite(memo.lat) || !isFinite(memo.lng)) {
-    elVue.textContent = 'Vue de la carte : vue de départ (Diego Suarez) — aucune position reçue';
-    elVue.className = 'ligne wait';
     return;
   }
   const p = L.latLng(memo.lat, memo.lng);
   memoire.setLatLng(p).setOpacity(1);
   map.setView(p, ZOOM_DEFAUT);
-  elVue.textContent = 'Vue de la carte : dernière position connue mémorisée (' +
-                      (memo.t ? new Date(memo.t).toLocaleString() : 'date inconnue') + ') — pas de direct';
-  elVue.className = 'ligne wait';
 }
 
 /* ---------- 7. Affichage de la position live ---------- */
@@ -1227,10 +1266,8 @@ function afficherPosition(pos, avecTrace){
     memoire.setOpacity(0);
   }
 
-  elMaj.textContent = `Dernière MAJ : ${pos.t ? new Date(pos.t).toLocaleTimeString()
+  elMaj.textContent = `Heure de la dernière mise à jour : ${pos.t ? new Date(pos.t).toLocaleTimeString()
                                              : new Date().toLocaleTimeString()}`;
-  elVue.textContent = 'Vue de la carte : position réelle de la canne (Firebase)';
-  elVue.className   = 'ligne ok';
   afficherBandeau(pos);
 
   if (distanceTotale >= 0) elBadges.dist.textContent = texteDistance(distanceTotale);
@@ -1243,13 +1280,13 @@ function afficherPosition(pos, avecTrace){
 /* Rafraîchit l'âge de la donnée chaque seconde (détection de canne hors ligne) */
 setInterval(() => {
   if (derniereMajMs === null){
-    elAge.textContent = 'Âge de la donnée : —';
-    elBadges.age.textContent = 'âge : —';
+    elAge.textContent = 'Durée de donnée : —';
+    elBadges.age.textContent = 'durée de donnée : —';
     return;
   }
   const s = Math.round((Date.now() - derniereMajMs) / 1000);
-  elAge.textContent = `Âge de la donnée : il y a ${s} s`;
-  elBadges.age.textContent = 'il y a ' + s + ' s';
+  elAge.textContent = `Durée de donnée : il y a ${s} s`;
+  elBadges.age.textContent = 'durée : il y a ' + s + ' s';
   const seuil = s > 120;
   elAge.className = seuil ? 'seuil' : '';
   elBadges.age.className = 'badge' + (seuil ? ' seuil' : '');
@@ -1578,10 +1615,8 @@ function viderHistorique(){
   elNb.textContent     = 'Mises à jour reçues : 0';
   elDist.textContent   = 'Distance parcourue : 0 m';
   elFormat.textContent = 'Format reçu : —';
-  elVue.textContent    = 'Vue de la carte : historique effacé — en attente de nouvelles positions';
-  elVue.className      = 'ligne wait';
   elBadges.dist.textContent = '0 m';
-  elBadges.age.textContent  = 'âge : —';
+  elBadges.age.textContent  = 'durée de donnée : —';
 
   majListe();
   majMouvement();
@@ -1619,7 +1654,7 @@ function afficherHistoriqueEnregistre(){
     res.points.forEach(p => { if (!dernieresCles.has(p.id)){ dernieresCles.add(p.id); nouveaux++; } });
     nbMaj += nouveaux;
     ajouterPoints(res.points);
-    const d = historique[historique.length - 1];
+    const d = dernierPointSuivi();                    // v4.7
     if (d){ derniereMajMs = Date.now(); afficherPosition(d, true); }
     setEtat('Historique affiché — ' + historique.length + ' positions', 'ok', 8000);
   } else {
@@ -1694,8 +1729,20 @@ if (typeof firebase !== 'undefined'){
          l'ouverture de la page, elles, s'affichent au fur et à mesure. */
       if (DEMARRER_A_ZERO && seuilDemarrage === null && res.points.length){
         const dernierConnu = res.points[res.points.length - 1];
-        seuilDemarrage = { t: isFinite(dernierConnu.t) ? dernierConnu.t : null,
+        seuilDemarrage = { t: dateValide(dernierConnu.t) ? dernierConnu.t : null,
                            cle: cleFirebaseDe(dernierConnu) };
+
+        /* v4.7 : on montre OÙ EST la canne sans la compter dans l'historique.
+           Cercle gris pointillé (et non le pin bleu) pour bien marquer la
+           différence : ce n'est pas une position en direct. */
+        if (AFFICHER_DERNIERE_CONNUE && !coupure && map && memoire){
+          const p  = L.latLng(dernierConnu.lat, dernierConnu.lng);
+          const qd = dateValide(dernierConnu.t) ? new Date(dernierConnu.t).toLocaleString() : 'date inconnue';
+          memoire.setLatLng(p).setOpacity(1)
+                 .bindPopup('Dernière position connue — ' + qd +
+                            '<br><span style="color:#666">Position déjà enregistrée : pas du direct.</span>');
+          if (!dernierePosition) map.setView(p, ZOOM_DEFAUT);
+        }
       }
 
       /* v4.5 : on jette d'emblée ce qui précède l'effacement. Sinon, au premier
@@ -1712,9 +1759,9 @@ if (typeof firebase !== 'undefined'){
 
         ajouterPoints(retenus);
 
-        const dernier = historique[historique.length - 1];
+        const dernier = dernierPointSuivi();          // v4.7 (pas un point aberrant)
         derniereMajMs = Date.now();
-        afficherPosition(dernier, nouveaux > 0);
+        if (dernier) afficherPosition(dernier, nouveaux > 0);
         setDiag('Lecture Firebase OK — ' + res.source +
                 (nouveaux ? ' · ' + nouveaux + ' nouveau(x) point(s)' : ' · aucun nouveau point') +
                 (coupure ? ' · ' + (res.points.length - retenus.length) + ' point(s) antérieur(s) à l\'effacement ignoré(s)' : ''),
@@ -1754,10 +1801,6 @@ if (typeof firebase !== 'undefined'){
                 'La page échouerait de la même façon même si la canne avait envoyé 1000 positions — ' +
                 'et l\'historique restera vide. Corrige les règles dans la console Firebase → ' +
                 'Realtime Database → Règles.', 'ko');
-        elVide.innerHTML = '<b>Accès refusé par les règles Firebase.</b> Aucune position ne peut être ' +
-                           'reçue : autorise la lecture de /gps_location dans la console Firebase → ' +
-                           'Realtime Database → Règles, puis publie les règles.';
-        elVide.style.display = 'block';
       } else {
         setEtat('Erreur Firebase : ' + msg, 'ko');
         setDiag('Erreur renvoyée par Firebase : <code>' + msg.replace(/[<>&]/g,'') + '</code>', 'ko');
@@ -1877,5 +1920,5 @@ window.addEventListener('resize', () => { if (map) map.invalidateSize(); });
 setTimeout(() => { if (map) map.invalidateSize(); }, 300);   // sécurité après le premier rendu
 
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4b9de3079a3b3fd',t:'MTc5MjE4MzExNA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4e2f7706822b3f2',t:'MTc5MjYxNDA2NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
